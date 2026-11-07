@@ -7,6 +7,8 @@ works with local models.
 - **Generate**: text to image at the canvas's aspect ratio.
 - **Refine**: image to image on the whole canvas or a selection.
 - **Inpaint**: regenerate a selection, using the surrounding canvas as context.
+- **Anlas warning**: the panel says when the next generation would go over Opus's free
+  limits (size, steps or images per request), and which one.
 - **Live preview**: watch the image form on the canvas while it generates (V4 and newer;
   can be turned off in Settings).
 - **Tag autocomplete** in both prompt boxes. NovelAI suggests tags as you type
@@ -87,4 +89,3 @@ box accepts any model name you type.
 - Multi-character prompts (V4 character captions and positions)
 - Vibe transfer and precise reference images
 - Director tools (`/ai/augment-image`) and upscaling (`/ai/upscale`)
-- Anlas cost estimate before generating

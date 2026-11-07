@@ -166,6 +166,15 @@ def test_parse_anlas():
     assert api.parse_anlas(b"not json") is None
 
 
+def test_anlas_warnings():
+    assert api.anlas_warnings(1024, 1024, 28, 1) == []
+    assert api.anlas_warnings(832, 1216, 28, 1) == []
+    assert api.anlas_warnings(1088, 1024, 28, 1) == ["1088 x 1024 is larger than 1024 x 1024"]
+    assert api.anlas_warnings(1024, 1024, 29, 1) == ["29 steps (free up to 28)"]
+    assert api.anlas_warnings(1024, 1024, 28, 3) == ["3 images per request (free: 1)"]
+    assert len(api.anlas_warnings(1536, 1536, 40, 2)) == 3
+
+
 def test_fit_resolution_without_upscale_keeps_native_size():
     assert api.fit_resolution(832, 1216, upscale=False) == (832, 1216)
     assert api.fit_resolution(512, 512, upscale=False) == (512, 512)  # Not blown up.

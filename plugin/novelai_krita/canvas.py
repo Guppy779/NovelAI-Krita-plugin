@@ -35,18 +35,26 @@ def has_selection(doc) -> bool:
     return selection is not None and selection.width() > 0 and selection.height() > 0
 
 
-def get_region(doc, padding_percent: int, max_pixels: int) -> Region:
-    """Return the area around the selection (see api.plan_region) or the
-    whole canvas."""
+def region_bounds(doc, padding_percent: int, max_pixels: int):
+    """(x, y, width, height, has_selection) of the area a generation uses:
+    around the selection (see api.plan_region) or the whole canvas. Cheap:
+    doesn't read the selection's pixels."""
     if not has_selection(doc):
-        return Region(0, 0, doc.width(), doc.height())
-
+        return 0, 0, doc.width(), doc.height(), False
     selection = doc.selection()
     x, y, width, height = api.plan_region(
         doc.width(), doc.height(), selection.x(), selection.y(),
         selection.width(), selection.height(), padding_percent, max_pixels)
+    return x, y, width, height, True
 
-    data = bytes(selection.pixelData(x, y, width, height))
+
+def get_region(doc, padding_percent: int, max_pixels: int) -> Region:
+    """The area a generation uses, with the selection's mask if there is one."""
+    x, y, width, height, selected = region_bounds(doc, padding_percent, max_pixels)
+    if not selected:
+        return Region(x, y, width, height)
+
+    data = bytes(doc.selection().pixelData(x, y, width, height))
     mask = QImage(data, width, height, width, QImage.Format.Format_Grayscale8).copy()
     return Region(x, y, width, height, mask)
 

@@ -91,6 +91,14 @@ class NovelAIDocker(DockWidget):
         self.mode_label.setWordWrap(True)
         self.mode_label.setStyleSheet("color: palette(mid);")
         layout.addWidget(self.mode_label)
+        self.cost_label = QLabel()
+        self.cost_label.setWordWrap(True)
+        self.cost_label.setStyleSheet("color: #e8a33d;")
+        self.cost_label.setToolTip(
+            "Opus subscribers generate for free up to 1024 x 1024 pixels,\n"
+            "28 steps and one image per request. Anything above costs Anlas.")
+        self.cost_label.setVisible(False)
+        layout.addWidget(self.cost_label)
 
         # Advanced options.
         self.advanced_toggle = QToolButton()
@@ -148,6 +156,8 @@ class NovelAIDocker(DockWidget):
         self.n_samples.setValue(settings.get_int("n_samples"))
         self.n_samples.setToolTip("Images per request. More than one costs Anlas.")
         form.addRow("Images", self.n_samples)
+        self.steps.valueChanged.connect(self._update_mode)
+        self.n_samples.valueChanged.connect(self._update_mode)
 
         self.quality_tags = QCheckBox("Add quality tags")
         self.quality_tags.setChecked(settings.get_bool("quality_tags"))
@@ -259,6 +269,26 @@ class NovelAIDocker(DockWidget):
             text = ("Generate a new image for the whole canvas" if value >= 100
                     else "Refine the whole canvas (image to image)")
         self.mode_label.setText(text)
+        self._update_cost_warning(doc)
+
+    @staticmethod
+    def _generation_size(width, height, sends_image):
+        # Only plain text to image is scaled up to fill the budget; when the
+        # canvas is sent, it goes at its own resolution so it stays sharp.
+        return api.fit_resolution(width, height, max_pixels(), upscale=not sends_image)
+
+    def _update_cost_warning(self, doc):
+        """Warn when the next generation would spend Anlas (Opus free limits)."""
+        reasons = []
+        if doc is not None:
+            _, _, w, h, selected = canvas.region_bounds(
+                doc, settings.get_int("context_padding"), max_pixels())
+            width, height = self._generation_size(
+                w, h, self.strength.value() < 100 or selected)
+            reasons = api.anlas_warnings(
+                width, height, self.steps.value(), self.n_samples.value())
+        self.cost_label.setText("Costs Anlas: " + "; ".join(reasons) if reasons else "")
+        self.cost_label.setVisible(bool(reasons))
 
     def _set_busy(self, busy):
         self.generate_button.setEnabled(not busy)
@@ -283,6 +313,7 @@ class NovelAIDocker(DockWidget):
 
     def open_settings(self):
         SettingsDialog(self._client, self).exec()
+        self._update_mode()  # The max generation size may have changed.
 
     def _suggest_tags(self, query, lang, on_results):
         """Tag lookup used by both prompt boxes. Errors are ignored quietly:
@@ -338,11 +369,8 @@ class NovelAIDocker(DockWidget):
 
         strength = self.strength.value() / 100.0
         region = canvas.get_region(doc, settings.get_int("context_padding"), max_pixels())
-        # Only plain text to image is scaled up to fill the budget; when the
-        # canvas is sent, it goes at its own resolution so it stays sharp.
-        sends_image = strength < 1.0 or region.mask is not None
-        width, height = api.fit_resolution(region.width, region.height, max_pixels(),
-                                           upscale=not sends_image)
+        width, height = self._generation_size(
+            region.width, region.height, strength < 1.0 or region.mask is not None)
         params = api.GenerationParams(
             prompt=prompt,
             negative_prompt=self.negative.toPlainText(),

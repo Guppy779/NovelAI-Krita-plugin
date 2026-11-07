@@ -66,10 +66,25 @@ DEFAULT_NEGATIVE_PROMPT = (
     "very displeasing, blurry, logo, watermark, signature"
 )
 
-# Largest image area that Opus subscribers can generate without spending
-# Anlas (with 28 steps or fewer, one image).
+# Opus subscribers generate without spending Anlas while staying within all
+# of these: an area of at most 1024 x 1024 pixels, 28 steps or fewer, and one
+# image per request.
 FREE_MAX_PIXELS = 1024 * 1024
+FREE_MAX_STEPS = 28
+FREE_MAX_IMAGES = 1
 MAX_SEED = 2**32 - 1
+
+
+def anlas_warnings(width: int, height: int, steps: int, n_samples: int) -> List[str]:
+    """Reasons a generation would cost Anlas on Opus (empty when it's free)."""
+    reasons = []
+    if width * height > FREE_MAX_PIXELS:
+        reasons.append("%d x %d is larger than 1024 x 1024" % (width, height))
+    if steps > FREE_MAX_STEPS:
+        reasons.append("%d steps (free up to %d)" % (steps, FREE_MAX_STEPS))
+    if n_samples > FREE_MAX_IMAGES:
+        reasons.append("%d images per request (free: %d)" % (n_samples, FREE_MAX_IMAGES))
+    return reasons
 SIZE_MULTIPLE = 64
 MAX_SIDE = 2048
 

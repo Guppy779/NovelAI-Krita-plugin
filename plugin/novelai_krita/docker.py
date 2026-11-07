@@ -13,7 +13,7 @@ from .settings_dialog import SettingsDialog, max_pixels
 from .qt import (
     QAbstractItemView, QCheckBox, QComboBox, QDoubleSpinBox, QFileDialog, QFormLayout,
     QHBoxLayout, QIcon, QImage, QLabel, QLineEdit, QListWidget, QListWidgetItem,
-    QMenu, QPixmap, QPlainTextEdit, QProgressBar, QPushButton, QSize, QSlider,
+    QMenu, QMessageBox, QPixmap, QPlainTextEdit, QProgressBar, QPushButton, QSize, QSlider,
     QSpinBox, Qt, QTimer, QToolButton, QVBoxLayout, QWidget,
 )
 
@@ -314,6 +314,7 @@ class NovelAIDocker(DockWidget):
     def open_settings(self):
         SettingsDialog(self._client, self).exec()
         self._update_mode()  # The max generation size may have changed.
+        self._trim_history()  # So may the history size.
 
     def _suggest_tags(self, query, lang, on_results):
         """Tag lookup used by both prompt boxes. Errors are ignored quietly:
@@ -491,6 +492,7 @@ class NovelAIDocker(DockWidget):
         self._results[self._next_id] = result
         self._next_id += 1
         self.history.insertItem(0, item)
+        self._trim_history()
 
     def _result(self, item):
         return self._results[item.data(Qt.ItemDataRole.UserRole)]
@@ -499,6 +501,27 @@ class NovelAIDocker(DockWidget):
         """Drop a result from the history (and from memory)."""
         self._results.pop(item.data(Qt.ItemDataRole.UserRole), None)
         self.history.takeItem(self.history.row(item))
+
+    def _trim_history(self):
+        """Keep only the newest results (Settings > History size)."""
+        limit = max(1, settings.get_int("history_limit"))
+        while self.history.count() > limit:
+            self._remove(self.history.item(self.history.count() - 1))  # Oldest last.
+
+    def clear_history(self):
+        """Remove every result from the history, after asking."""
+        count = self.history.count()
+        if count == 0:
+            return
+        answer = QMessageBox.question(
+            self, "Clear history",
+            "Remove all %d results from the history?\n"
+            "Layers you already added to documents are not affected." % count)
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        self.history.clear()
+        self._results.clear()
+        self.status.setText("History cleared.")
 
     def _save(self, result):
         """Save NovelAI's original file, which keeps its embedded prompt info."""
@@ -532,6 +555,12 @@ class NovelAIDocker(DockWidget):
     def _history_menu(self, pos):
         item = self.history.itemAt(pos)
         if item is None:
+            # Right-click on empty space: only the clear option.
+            if self.history.count():
+                menu = QMenu(self)
+                clear = menu.addAction("Clear history...")
+                if menu.exec(self.history.mapToGlobal(pos)) == clear:
+                    self.clear_history()
             return
         result = self._result(item)
         menu = QMenu(self)
@@ -542,6 +571,7 @@ class NovelAIDocker(DockWidget):
         use_prompt = menu.addAction("Use this prompt")
         menu.addSeparator()
         remove = menu.addAction("Remove from history")
+        clear = menu.addAction("Clear history...")
         chosen = menu.exec(self.history.mapToGlobal(pos))
         if chosen == insert:
             self._insert(result)
@@ -549,6 +579,8 @@ class NovelAIDocker(DockWidget):
             self._save(result)
         elif chosen == remove:
             self._remove(item)
+        elif chosen == clear:
+            self.clear_history()
         elif chosen == use_seed:
             self.random_seed.setChecked(False)
             self.seed.setText(str(result.seed))

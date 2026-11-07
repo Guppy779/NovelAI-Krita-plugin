@@ -15,7 +15,8 @@ works with local models.
   (Tab/Enter to insert), and typing Japanese suggests the matching English tags.
 - Results go onto new layers and into a history list. Right-click a result to save
   NovelAI's original PNG (prompt info included), reuse its seed or prompt, or remove it.
-  The history lives in memory and clears when Krita closes.
+  The history lives in memory, keeps the newest 50 results by default (Settings > History size)
+  and clears when Krita closes; right-click > Clear history empties it.
 
 It requires a NovelAI subscription. Generations up to 1024 × 1024 pixels in area,
 with 28 steps or fewer, are free on the Opus tier. Anything larger costs Anlas.

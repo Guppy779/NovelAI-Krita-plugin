@@ -28,6 +28,7 @@ DEFAULTS = {
     "autocomplete": "true",
     "inpaint_full_image": "false",
     "live_preview": "true",
+    "history_limit": "50",
 }
 
 

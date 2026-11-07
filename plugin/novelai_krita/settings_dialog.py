@@ -89,6 +89,15 @@ class SettingsDialog(QDialog):
             "Turn off to generate without previews (no temporary layer).")
         form.addRow("Live preview", self.live_preview)
 
+        self.history_limit = QSpinBox()
+        self.history_limit.setRange(1, 500)
+        self.history_limit.setSuffix(" results")
+        self.history_limit.setValue(max(1, settings.get_int("history_limit")))
+        self.history_limit.setToolTip(
+            "How many results the history at the bottom of the panel keeps in\n"
+            "memory. The oldest are dropped first; layers already added stay.")
+        form.addRow("History size", self.history_limit)
+
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         buttons.accepted.connect(self.accept)
@@ -122,6 +131,7 @@ class SettingsDialog(QDialog):
         settings.set("autocomplete", self.autocomplete.isChecked())
         settings.set("inpaint_full_image", self.full_image.isChecked())
         settings.set("live_preview", self.live_preview.isChecked())
+        settings.set("history_limit", self.history_limit.value())
         super().accept()
 
     def done(self, result):

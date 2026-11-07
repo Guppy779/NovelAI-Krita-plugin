@@ -64,9 +64,18 @@ FREE_MAX_IMAGES = 1
 MAX_SEED = 2**32 - 1
 
 
-def anlas_warnings(width: int, height: int, steps: int, n_samples: int) -> List[str]:
-    """Reasons a generation would cost Anlas on Opus (empty when it's free)."""
+def anlas_warnings(width: int, height: int, steps: int, n_samples: int,
+                   model: str = "", account: "Optional[Account]" = None) -> List[str]:
+    """Reasons a generation would cost Anlas (empty when it's free).
+
+    Without ``account`` (not loaded yet) an Opus plan is assumed.
+    """
+    if account is not None and account.tier is not None and not account.is_opus:
+        return ["free generations need an Opus plan (yours: %s)" % account.plan_name]
     reasons = []
+    if (account is not None and "diffusion-5" in model
+            and (account.v5_unavailable or account.v5_percent == 0)):
+        reasons.append("your V5 Opus allowance is used up")
     if width * height > FREE_MAX_PIXELS:
         reasons.append("%d x %d is larger than 1024 x 1024" % (width, height))
     if steps > FREE_MAX_STEPS:
@@ -74,6 +83,8 @@ def anlas_warnings(width: int, height: int, steps: int, n_samples: int) -> List[
     if n_samples > FREE_MAX_IMAGES:
         reasons.append("%d images per request (free: %d)" % (n_samples, FREE_MAX_IMAGES))
     return reasons
+
+
 SIZE_MULTIPLE = 64
 MAX_SIDE = 2048
 
@@ -352,19 +363,114 @@ def error_message(status: int, body: bytes) -> str:
     return message
 
 
-def parse_anlas(body: bytes) -> Optional[int]:
-    """Extract the Anlas balance from a /user/subscription response."""
-    try:
-        steps = json.loads(body.decode("utf-8")).get("trainingStepsLeft") or {}
-    except (ValueError, UnicodeDecodeError, AttributeError):
-        return None
-    total = 0
-    found = False
-    for key in ("fixedTrainingStepsLeft", "purchasedTrainingSteps"):
-        if isinstance(steps.get(key), int):
-            total += steps[key]
-            found = True
-    return total if found else None
+# ---- Account (GET /user/subscription) ---------------------------------------
+
+TIER_NAMES = {0: "Paper", 1: "Tablet", 2: "Scroll", 3: "Opus"}
+OPUS_TIER = 3
+
+
+def _int(value) -> Optional[int]:
+    return value if isinstance(value, int) and not isinstance(value, bool) else None
+
+
+@dataclass
+class Account:
+    """What /user/subscription says about the plan, Anlas and V5 allowance."""
+
+    tier: Optional[int] = None
+    active: bool = False
+    plan_anlas: Optional[int] = None  # Refilled monthly with the subscription.
+    purchased_anlas: Optional[int] = None
+    # Opus's V5 allowance ("usage"): percent left (0-100+), percent bought on
+    # top (0-400), seconds until the next +1%, and whether V5 is unavailable.
+    v5_percent: Optional[int] = None
+    v5_purchased_percent: Optional[int] = None
+    v5_refill_seconds: Optional[int] = None
+    v5_unavailable: bool = False
+
+    @property
+    def anlas(self) -> Optional[int]:
+        if self.plan_anlas is None and self.purchased_anlas is None:
+            return None
+        return (self.plan_anlas or 0) + (self.purchased_anlas or 0)
+
+    @property
+    def is_opus(self) -> bool:
+        return self.active and self.tier == OPUS_TIER
+
+    @property
+    def plan_name(self) -> str:
+        if not self.active:
+            return "No subscription"
+        return TIER_NAMES.get(self.tier, "Tier %s" % self.tier)
+
+
+def parse_account(body: bytes) -> Account:
+    data = json.loads(body.decode("utf-8"))
+    steps = data.get("trainingStepsLeft") or {}
+    usage = data.get("usage") or {}
+    return Account(
+        tier=_int(data.get("tier")),
+        active=data.get("active") is True,
+        plan_anlas=_int(steps.get("fixedTrainingStepsLeft")),
+        purchased_anlas=_int(steps.get("purchasedTrainingSteps")),
+        v5_percent=_int(usage.get("percent")),
+        v5_purchased_percent=_int(usage.get("purchasedPercent")),
+        v5_refill_seconds=_int(usage.get("timeUntilNextPercent")),
+        v5_unavailable=usage.get("isNegative") is True,
+    )
+
+
+def format_duration(seconds: int) -> str:
+    seconds = max(0, int(seconds))
+    if seconds >= 3600:
+        return "%dh %dm" % (seconds // 3600, seconds % 3600 // 60)
+    if seconds >= 60:
+        return "%dm" % (seconds // 60)
+    return "%ds" % seconds
+
+
+def v5_allowance_text(account: Account) -> str:
+    """e.g. "V5 99%", or "" when the account has no V5 allowance info."""
+    if account.v5_unavailable:
+        return "V5 used up"
+    if account.v5_percent is None:
+        return ""
+    text = "V5 %d%%" % account.v5_percent
+    if account.v5_purchased_percent:
+        text += " +%d%%" % account.v5_purchased_percent
+    return text
+
+
+def account_summary(account: Account) -> str:
+    """One line for the panel, e.g. "Opus · 15,441 Anlas · V5 99%"."""
+    parts = [account.plan_name]
+    if account.anlas is not None:
+        parts.append("{:,} Anlas".format(account.anlas))
+    if account.is_opus:
+        v5 = v5_allowance_text(account)
+        if v5:
+            parts.append(v5)
+    return " · ".join(parts)
+
+
+def account_details(account: Account) -> str:
+    """Multi-line tooltip text."""
+    lines = ["Plan: %s" % account.plan_name]
+    if account.anlas is not None:
+        lines.append("Anlas: {:,} ({:,} from the plan, {:,} purchased)".format(
+            account.anlas, account.plan_anlas or 0, account.purchased_anlas or 0))
+    if account.is_opus:
+        if account.v5_unavailable:
+            lines.append("V5 Opus allowance: used up")
+        elif account.v5_percent is not None:
+            line = "V5 Opus allowance: %d%% left" % account.v5_percent
+            if account.v5_purchased_percent:
+                line += " (+%d%% purchased)" % account.v5_purchased_percent
+            lines.append(line)
+            if account.v5_refill_seconds:
+                lines.append("Next +1%% in %s" % format_duration(account.v5_refill_seconds))
+    return "\n".join(lines)
 
 
 # ---- Tag suggestions (GET /ai/generate-image/suggest-tags) -----------------

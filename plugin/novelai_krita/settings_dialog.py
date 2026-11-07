@@ -114,13 +114,10 @@ class SettingsDialog(QDialog):
             return
         self.status.setText("Checking...")
 
-        def ok(anlas):
-            text = "Token works."
-            if anlas is not None:
-                text += " Anlas balance: %d" % anlas
-            self.status.setText(text)
+        def ok(account):
+            self.status.setText("Token works. " + api.account_summary(account))
 
-        self._job = self._client.check_subscription(
+        self._job = self._client.fetch_account(
             token, ok, lambda message: self.status.setText(message))
 
     def accept(self):

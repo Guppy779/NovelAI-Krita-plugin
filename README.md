@@ -7,8 +7,10 @@ works with local models.
 - **Generate**: text to image at the canvas's aspect ratio.
 - **Refine**: image to image on the whole canvas or a selection.
 - **Inpaint**: regenerate a selection, using the surrounding canvas as context.
-- **Anlas warning**: the panel says when the next generation would go over Opus's free
-  limits (size, steps or images per request), and which one.
+- **Account at a glance**: your plan, Anlas and remaining V5 Opus allowance, refreshed after
+  each generation.
+- **Anlas warning**: the panel says when the next generation would cost Anlas (over Opus's free
+  size, steps or images per request, V5 allowance used up, or a plan without free generations).
 - **Live preview**: watch the image form on the canvas while it generates (V4 and newer;
   can be turned off in Settings).
 - **Quality tags and Undesired Content presets** for every model, exactly as the NovelAI site

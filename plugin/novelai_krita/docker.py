@@ -65,6 +65,21 @@ class NovelAIDocker(DockWidget):
         row.addWidget(settings_button)
         layout.addLayout(row)
 
+        # Account: plan, Anlas and V5 allowance, refreshed after each generation.
+        self._account = None
+        self._account_job = None
+        self.account_label = QLabel()
+        self.account_label.setWordWrap(True)
+        refresh = QToolButton()
+        refresh.setText("Refresh")
+        refresh.setAutoRaise(True)
+        refresh.setToolTip("Check your plan, Anlas and V5 allowance again.")
+        refresh.clicked.connect(self.refresh_account)
+        row = QHBoxLayout()
+        row.addWidget(self.account_label, 1)
+        row.addWidget(refresh)
+        layout.addLayout(row)
+
         # Prompts.
         self.prompt = PromptEdit(settings.get("prompt"), self._suggest_tags)
         self.prompt.setPlaceholderText("Prompt, e.g. 1girl, silver hair, night sky, city lights")
@@ -108,7 +123,8 @@ class NovelAIDocker(DockWidget):
         layout.addLayout(row)
         self.mode_label = QLabel()
         self.mode_label.setWordWrap(True)
-        self.mode_label.setStyleSheet("color: palette(mid);")
+        # Normal text colour (readable in light and dark themes), set apart by italics.
+        self.mode_label.setStyleSheet("font-style: italic;")
         layout.addWidget(self.mode_label)
         self.cost_label = QLabel()
         self.cost_label.setWordWrap(True)
@@ -228,6 +244,36 @@ class NovelAIDocker(DockWidget):
         self._timer.timeout.connect(self._update_mode)
         self._timer.start(600)
         self._update_mode()
+        self.refresh_account()
+
+    # ---- Account ----------------------------------------------------------
+
+    def refresh_account(self):
+        """Fetch plan, Anlas and V5 allowance (free; no generation)."""
+        token = settings.get("token")
+        if not token:
+            self._account = None
+            self.account_label.setText("Add your API token in Settings to see your Anlas.")
+            self.account_label.setToolTip("")
+            return
+        if self._account_job is not None:
+            self._account_job.cancel()
+        if self._account is None:
+            self.account_label.setText("Checking your account...")
+        self._account_job = self._client.fetch_account(
+            token, self._on_account, self._on_account_error)
+
+    def _on_account(self, account):
+        self._account_job = None
+        self._account = account
+        self.account_label.setText(api.account_summary(account))
+        self.account_label.setToolTip(api.account_details(account))
+        self._update_mode()  # The cost warning depends on it.
+
+    def _on_account_error(self, message):
+        self._account_job = None
+        if self._account is None:  # Keep showing the last known values otherwise.
+            self.account_label.setText("Couldn't load your account: %s" % message)
 
     # Krita calls this when the active canvas changes.
     def canvasChanged(self, canvas_):
@@ -329,7 +375,8 @@ class NovelAIDocker(DockWidget):
             width, height = self._generation_size(
                 w, h, self.strength.value() < 100 or selected)
             reasons = api.anlas_warnings(
-                width, height, self.steps.value(), self.n_samples.value())
+                width, height, self.steps.value(), self.n_samples.value(),
+                self._model_name(), self._account)
         self.cost_label.setText("Costs Anlas: " + "; ".join(reasons) if reasons else "")
         self.cost_label.setVisible(bool(reasons))
 
@@ -359,6 +406,7 @@ class NovelAIDocker(DockWidget):
         SettingsDialog(self._client, self).exec()
         self._update_mode()  # The max generation size may have changed.
         self._trim_history()  # So may the history size.
+        self.refresh_account()  # And the token.
 
     def _suggest_tags(self, query, lang, on_results):
         """Tag lookup used by both prompt boxes. Errors are ignored quietly:
@@ -477,6 +525,7 @@ class NovelAIDocker(DockWidget):
         self._clear_preview()
         self._set_busy(False)
         self.status.setText(message)
+        self.refresh_account()
 
     def _on_preview(self, event, doc, region, steps):
         """Show an in-progress image from the stream (first image of a batch)."""
@@ -503,6 +552,7 @@ class NovelAIDocker(DockWidget):
         self._job = None
         self._clear_preview()
         self._set_busy(False)
+        self.refresh_account()  # Anlas / V5 allowance may have changed.
         elapsed = time.monotonic() - self._started
         if not images:
             self.status.setText("NovelAI returned no images.")

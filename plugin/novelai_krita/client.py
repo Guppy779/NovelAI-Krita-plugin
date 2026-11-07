@@ -146,8 +146,8 @@ class NovelAIClient(QObject):
         reply = self._manager.get(request)
         return self._watch(reply, on_success, on_error, api.parse_tag_suggestions)
 
-    def check_subscription(self, token, on_success, on_error):
-        """GET /user/subscription. ``on_success`` receives the Anlas balance or None."""
+    def fetch_account(self, token, on_success, on_error):
+        """GET /user/subscription. ``on_success`` receives an api.Account."""
         request = self._request(api.SUBSCRIPTION_URL, token, DEFAULT_TIMEOUT_MS)
         reply = self._manager.get(request)
-        return self._watch(reply, on_success, on_error, api.parse_anlas)
+        return self._watch(reply, on_success, on_error, api.parse_account)

@@ -168,12 +168,53 @@ def test_error_message():
     assert api.error_message(500, b"<html>oops</html>").endswith("<html>oops</html>")
 
 
-def test_parse_anlas():
-    body = json.dumps({"trainingStepsLeft": {"fixedTrainingStepsLeft": 10000,
-                                             "purchasedTrainingSteps": 500}}).encode()
-    assert api.parse_anlas(body) == 10500
-    assert api.parse_anlas(b"{}") is None
-    assert api.parse_anlas(b"not json") is None
+# Same shape as a real /user/subscription response (only these fields shown).
+SUBSCRIPTION = {
+    "tier": 3, "active": True,
+    "trainingStepsLeft": {"fixedTrainingStepsLeft": 5748, "purchasedTrainingSteps": 9693},
+    "usage": {"percent": 99, "purchasedPercent": 0, "isNegative": False, "timeUntilNextPercent": 6048},
+}
+
+
+def test_parse_account():
+    account = api.parse_account(json.dumps(SUBSCRIPTION).encode())
+    assert account.is_opus and account.plan_name == "Opus"
+    assert account.anlas == 15441
+    assert (account.v5_percent, account.v5_refill_seconds, account.v5_unavailable) == (99, 6048, False)
+    assert api.account_summary(account) == "Opus · 15,441 Anlas · V5 99%"
+    details = api.account_details(account)
+    assert "5,748 from the plan, 9,693 purchased" in details and "Next +1% in 1h 40m" in details
+
+
+def test_parse_account_edge_cases():
+    empty = api.parse_account(b"{}")
+    assert empty.anlas is None and not empty.is_opus and empty.plan_name == "No subscription"
+    assert api.account_summary(empty) == "No subscription"
+    scroll = api.parse_account(json.dumps({"tier": 2, "active": True,
+                                           "trainingStepsLeft": {"fixedTrainingStepsLeft": 1000}}).encode())
+    assert api.account_summary(scroll) == "Scroll · 1,000 Anlas"  # No V5 allowance shown.
+    used = dict(SUBSCRIPTION, usage={"percent": 0, "isNegative": True, "purchasedPercent": 50})
+    assert api.account_summary(api.parse_account(json.dumps(used).encode())).endswith("V5 used up")
+    bought = dict(SUBSCRIPTION, usage={"percent": 40, "purchasedPercent": 100})
+    assert api.account_summary(api.parse_account(json.dumps(bought).encode())).endswith("V5 40% +100%")
+
+
+def test_format_duration():
+    assert api.format_duration(6048) == "1h 40m"
+    assert api.format_duration(125) == "2m"
+    assert api.format_duration(9) == "9s"
+
+
+def test_anlas_warnings_use_the_account():
+    opus = api.parse_account(json.dumps(SUBSCRIPTION).encode())
+    assert api.anlas_warnings(1024, 1024, 28, 1, "nai-diffusion-5-full", opus) == []
+    used = api.parse_account(json.dumps(dict(SUBSCRIPTION, usage={"percent": 0})).encode())
+    assert api.anlas_warnings(1024, 1024, 28, 1, "nai-diffusion-5-full", used) == [
+        "your V5 Opus allowance is used up"]
+    assert api.anlas_warnings(1024, 1024, 28, 1, "nai-diffusion-4-5-full", used) == []  # Not V5.
+    scroll = api.parse_account(json.dumps({"tier": 2, "active": True}).encode())
+    assert api.anlas_warnings(512, 512, 10, 1, "nai-diffusion-4-5-full", scroll) == [
+        "free generations need an Opus plan (yours: Scroll)"]
 
 
 def test_anlas_warnings():

@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Service
+ServiceTypes=Krita/PythonPlugin
+X-KDE-Library=novelai_krita
+X-Python-2-Compatible=false
+X-Krita-Manual=Manual.html
+Name=NovelAI Image Generation
+Comment=Generate, refine and inpaint images with NovelAI from inside Krita

@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"><title>NovelAI Image Generation</title></head>
+<body>
+<h3>NovelAI Image Generation</h3>
+<p>Generate, refine and inpaint images with NovelAI from a Krita docker.</p>
+<h4>Setup</h4>
+<ol>
+  <li>Open <b>Settings &rarr; Dockers &rarr; NovelAI</b>.</li>
+  <li>Click <b>Settings</b> in the docker and paste a NovelAI <b>Persistent API Token</b>
+      (novelai.net &rarr; User Settings &rarr; Account &rarr; Get Persistent API Token).</li>
+</ol>
+<h4>Modes</h4>
+<p>The mode depends on the <b>Strength</b> slider and whether something is selected:</p>
+<ul>
+  <li><b>No selection, 100%</b>: generate a new image the size of the canvas.</li>
+  <li><b>No selection, below 100%</b>: refine the whole canvas (image to image).</li>
+  <li><b>Selection, 100%</b>: inpaint the selection using the surrounding canvas as context.</li>
+  <li><b>Selection, below 100%</b>: refine only the selected area.</li>
+</ul>
+<p>Every result is added as a new layer above the active layer and kept in the
+history at the bottom of the docker. Double-click a thumbnail to add it again.
+Right-click it to save it to disk, reuse its seed or prompt, or remove it from
+the history. Saving writes the file exactly as NovelAI sent it, including the
+prompt and settings NovelAI embeds in the PNG.</p>
+<p>The history is kept in memory only and is cleared when Krita closes.</p>
+</body>
+</html>

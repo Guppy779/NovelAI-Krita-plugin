@@ -7,6 +7,8 @@ works with local models.
 - **Generate**: text to image at the canvas's aspect ratio.
 - **Refine**: image to image on the whole canvas or a selection.
 - **Inpaint**: regenerate a selection, using the surrounding canvas as context.
+- **Live preview**: watch the image form on the canvas while it generates (V4 and newer;
+  can be turned off in Settings).
 - **Tag autocomplete** in both prompt boxes. NovelAI suggests tags as you type
   (Tab/Enter to insert), and typing Japanese suggests the matching English tags.
 - Results go onto new layers and into a history list. Right-click a result to save
@@ -82,7 +84,6 @@ box accepts any model name you type.
 
 ## Roadmap
 
-- Live preview using the streaming endpoint (`/ai/generate-image-stream`)
 - Multi-character prompts (V4 character captions and positions)
 - Vibe transfer and precise reference images
 - Director tools (`/ai/augment-image`) and upscaling (`/ai/upscale`)

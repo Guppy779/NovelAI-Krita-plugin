@@ -40,6 +40,8 @@ class NovelAIDocker(DockWidget):
         self._started = 0.0
         self._results = {}  # History item id -> Result.
         self._next_id = 0
+        self._preview = None  # Temporary "NovelAI preview" layer while streaming.
+        self._preview_doc = None
 
         root = QWidget(self)
         layout = QVBoxLayout(root)
@@ -378,25 +380,54 @@ class NovelAIDocker(DockWidget):
         self.status.setText("Generating %d x %d (%s)..." % (width, height, params.action))
         self._started = time.monotonic()
         self._set_busy(True)
-        self._job = self._client.generate(
-            token, payload,
-            lambda images: self._on_images(images, doc, region, seed, prompt, sent_image),
-            self._on_error)
+        on_images = lambda images: self._on_images(images, doc, region, seed, prompt, sent_image)
+        if settings.get_bool("live_preview") and api.supports_streaming(params.model):
+            self._preview_doc = doc
+            self._job = self._client.generate_stream(
+                token, payload,
+                lambda event: self._on_preview(event, doc, region, params.steps),
+                on_images, self._on_error)
+        else:
+            self._job = self._client.generate(token, payload, on_images, self._on_error)
 
     def cancel(self):
         if self._job is not None:
             self._job.cancel()
             self._job = None
+        self._clear_preview()
         self._set_busy(False)
         self.status.setText("Cancelled.")
 
     def _on_error(self, message):
         self._job = None
+        self._clear_preview()
         self._set_busy(False)
         self.status.setText(message)
 
+    def _on_preview(self, event, doc, region, steps):
+        """Show an in-progress image from the stream (first image of a batch)."""
+        if event.sample != 0 or self._job is None or not canvas.document_is_open(doc):
+            return
+        image = QImage.fromData(event.image)
+        if image.isNull():
+            return
+        try:
+            self._preview = canvas.show_preview(doc, self._preview, image, region)
+        except Exception:  # A preview must never break the generation itself.
+            self._preview = None
+            return
+        self.status.setText("Generating... step %d of %d" % (event.step + 1, steps))
+
+    def _clear_preview(self):
+        try:
+            canvas.remove_preview(self._preview_doc, self._preview)
+        finally:
+            self._preview = None
+            self._preview_doc = None
+
     def _on_images(self, images, doc, region, seed, prompt, sent_image=None):
         self._job = None
+        self._clear_preview()
         self._set_busy(False)
         elapsed = time.monotonic() - self._started
         if not images:

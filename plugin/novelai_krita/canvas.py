@@ -171,7 +171,14 @@ def insert_layer(doc, image: QImage, x: int, y: int, name: str, visible: bool = 
 
     node = doc.createNode(name, "paintlayer")
     parent.addChildNode(node, active)
+    write_pixels(doc, node, image, x, y)
+    node.setVisible(visible)
+    doc.refreshProjection()
+    return node
 
+
+def write_pixels(doc, node, image: QImage, x: int, y: int) -> None:
+    """Replace ``node``'s pixels in the image's rectangle with ``image``."""
     # Krita stores 8-bit RGBA as BGRA, the same layout as QImage ARGB32 on
     # little-endian machines. Other document color spaces are converted.
     native = (doc.colorModel(), doc.colorDepth()) == ("RGBA", "U8")
@@ -182,9 +189,29 @@ def insert_layer(doc, image: QImage, x: int, y: int, name: str, visible: bool = 
     if not native:
         node.setColorSpace(doc.colorModel(), doc.colorDepth(), doc.colorProfile())
 
-    node.setVisible(visible)
+
+PREVIEW_LAYER_NAME = "NovelAI preview"
+
+
+def show_preview(doc, node, image: QImage, region: Region):
+    """Show an in-progress image on the canvas in a temporary layer.
+
+    Creates the layer the first time (``node`` None) and updates it after
+    that; returns the layer. Previews are cut to the selection, if any.
+    """
+    layer = compose_result(image, region)
+    if node is None:
+        return insert_layer(doc, layer, region.x, region.y, PREVIEW_LAYER_NAME)
+    write_pixels(doc, node, layer, region.x, region.y)
     doc.refreshProjection()
     return node
+
+
+def remove_preview(doc, node) -> None:
+    if node is None or not document_is_open(doc):
+        return  # A closed document took its layers with it.
+    node.remove()
+    doc.refreshProjection()
 
 
 def document_is_open(doc) -> bool:

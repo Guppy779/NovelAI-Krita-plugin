@@ -27,6 +27,7 @@ DEFAULTS = {
     "save_dir": "",
     "autocomplete": "true",
     "inpaint_full_image": "false",
+    "live_preview": "true",
 }
 
 

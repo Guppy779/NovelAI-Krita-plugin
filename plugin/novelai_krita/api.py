@@ -16,6 +16,7 @@ from typing import List, Optional, Tuple
 
 IMAGE_API = "https://image.novelai.net"
 GENERATE_URL = IMAGE_API + "/ai/generate-image"
+GENERATE_STREAM_URL = IMAGE_API + "/ai/generate-image-stream"
 SUGGEST_TAGS_URL = IMAGE_API + "/ai/generate-image/suggest-tags"
 # api.novelai.net rejects third-party clients here ("update to the image
 # URL"); the image host serves the same endpoint.
@@ -404,3 +405,81 @@ def format_count(count: int) -> str:
     if count >= 1000:
         return "%.1fk" % (count / 1000.0)
     return str(count)
+
+
+# ---- Streaming generation (POST /ai/generate-image-stream) -----------------
+#
+# With parameters.stream = "sse" the server sends Server-Sent Events:
+#
+#   event: intermediate
+#   data: {"event_type": "intermediate", "samp_ix": 0, "step_ix": 3,
+#          "gen_id": ..., "sigma": 6.7, "image": "<base64 JPEG, half size>"}
+#
+#   event: final
+#   data: {"event_type": "final", "samp_ix": 0, "gen_id": ..., "image": "<base64 PNG>"}
+#
+# plus "error" ({"code", "message"}) and "retry" events. V3 models don't stream.
+
+
+def supports_streaming(model: str) -> bool:
+    return is_v4(model)
+
+
+@dataclass
+class StreamEvent:
+    kind: str  # "intermediate", "final", "error" or "retry"
+    sample: int = 0  # Index of the image in the batch.
+    step: int = 0
+    image: bytes = b""
+    message: str = ""
+
+
+class SSEParser:
+    """Incremental Server-Sent Events parser: feed bytes, get StreamEvents."""
+
+    def __init__(self):
+        self._buffer = b""
+
+    def feed(self, chunk: bytes) -> List[StreamEvent]:
+        self._buffer += chunk.replace(b"\r\n", b"\n")
+        events = []
+        while b"\n\n" in self._buffer:
+            block, self._buffer = self._buffer.split(b"\n\n", 1)
+            event = self._parse_block(block.decode("utf-8", "replace"))
+            if event is not None:
+                events.append(event)
+        return events
+
+    def finish(self) -> List[StreamEvent]:
+        """Parse whatever is left when the stream ends without a blank line."""
+        rest, self._buffer = self._buffer, b""
+        event = self._parse_block(rest.decode("utf-8", "replace")) if rest.strip() else None
+        return [event] if event is not None else []
+
+    @staticmethod
+    def _parse_block(block: str) -> Optional[StreamEvent]:
+        name, data = "", []
+        for line in block.split("\n"):
+            if line.startswith(":"):
+                continue  # Comment / keep-alive.
+            field_name, _, value = line.partition(":")
+            value = value[1:] if value.startswith(" ") else value
+            if field_name == "event":
+                name = value
+            elif field_name == "data":
+                data.append(value)
+        if not data:
+            return None
+        try:
+            obj = json.loads("\n".join(data))
+        except ValueError:
+            return None
+        kind = obj.get("event_type") or name
+        image = obj.get("image")
+        return StreamEvent(
+            kind=kind,
+            sample=int(obj.get("samp_ix") or 0),
+            step=int(obj.get("step_ix") or 0),
+            image=base64.b64decode(image) if isinstance(image, str) else b"",
+            message=str(obj.get("message") or obj.get("code") or ""),
+        )

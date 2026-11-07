@@ -81,6 +81,14 @@ class SettingsDialog(QDialog):
             "(often the whole canvas), covering everything below it.")
         form.addRow("Inpainting", self.full_image)
 
+        self.live_preview = QCheckBox("Show a live preview on the canvas while generating")
+        self.live_preview.setChecked(settings.get_bool("live_preview"))
+        self.live_preview.setToolTip(
+            "Shows each step in a temporary 'NovelAI preview' layer, which is\n"
+            "replaced by the result when it's done. V4 and newer models only.\n"
+            "Turn off to generate without previews (no temporary layer).")
+        form.addRow("Live preview", self.live_preview)
+
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         buttons.accepted.connect(self.accept)
@@ -113,6 +121,7 @@ class SettingsDialog(QDialog):
         settings.set("context_padding", self.padding.value())
         settings.set("autocomplete", self.autocomplete.isChecked())
         settings.set("inpaint_full_image", self.full_image.isChecked())
+        settings.set("live_preview", self.live_preview.isChecked())
         super().accept()
 
     def done(self, result):

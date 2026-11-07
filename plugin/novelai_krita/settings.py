@@ -25,6 +25,7 @@ DEFAULTS = {
     "context_padding": "20",
     "show_advanced": "false",
     "save_dir": "",
+    "autocomplete": "true",
 }
 
 

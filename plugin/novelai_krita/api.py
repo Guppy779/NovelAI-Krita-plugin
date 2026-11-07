@@ -9,12 +9,14 @@ import io
 import json
 import math
 import random
+import urllib.parse
 import zipfile
 from dataclasses import dataclass, field
 from typing import List, Optional, Tuple
 
 IMAGE_API = "https://image.novelai.net"
 GENERATE_URL = IMAGE_API + "/ai/generate-image"
+SUGGEST_TAGS_URL = IMAGE_API + "/ai/generate-image/suggest-tags"
 # api.novelai.net rejects third-party clients here ("update to the image
 # URL"); the image host serves the same endpoint.
 SUBSCRIPTION_URL = IMAGE_API + "/user/subscription"
@@ -282,3 +284,48 @@ def parse_anlas(body: bytes) -> Optional[int]:
             total += steps[key]
             found = True
     return total if found else None
+
+
+# ---- Tag suggestions (GET /ai/generate-image/suggest-tags) -----------------
+
+@dataclass
+class TagSuggestion:
+    tag: str  # Text to insert into the prompt.
+    label: str  # Text to show in the list.
+    count: int  # Popularity; the server caps it at 10000.
+    exact: bool  # Prefix match (False for the server's fuzzy matches).
+
+
+def suggest_tags_url(model: str, query: str, lang: str = "en") -> str:
+    params = {"model": model, "prompt": query}
+    if lang != "en":
+        params["lang"] = lang
+    return SUGGEST_TAGS_URL + "?" + urllib.parse.urlencode(params)
+
+
+def parse_tag_suggestions(body: bytes) -> List[TagSuggestion]:
+    """Parse both response shapes: English ({"tags": [...]}) and Japanese ([...])."""
+    data = json.loads(body.decode("utf-8"))
+    results = []
+    if isinstance(data, dict):
+        for item in data.get("tags") or []:
+            tag = item.get("tag")
+            if tag:
+                results.append(TagSuggestion(
+                    tag, tag, int(item.get("count") or 0),
+                    not item.get("confidence")))
+    elif isinstance(data, list):
+        for item in data:
+            tag = item.get("en_tag")
+            if tag:
+                label = "%s → %s" % (item.get("jp_tag", ""), tag)
+                results.append(TagSuggestion(tag, label, int(item.get("power") or 0), True))
+    return results
+
+
+def format_count(count: int) -> str:
+    if count >= 10000:
+        return "10k+"
+    if count >= 1000:
+        return "%.1fk" % (count / 1000.0)
+    return str(count)

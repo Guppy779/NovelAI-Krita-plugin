@@ -6,15 +6,19 @@ which work with both bindings.
 
 try:
     from PyQt5.QtCore import (  # noqa: F401
-        QBuffer, QByteArray, QIODevice, QObject, QRect, QSize, QTimer, QUrl, Qt,
-        pyqtSignal,
+        QBuffer, QByteArray, QIODevice, QModelIndex, QObject, QRect, QSize, QTimer,
+        QUrl, Qt, pyqtSignal,
     )
-    from PyQt5.QtGui import QColor, QIcon, QImage, QPainter, QPixmap  # noqa: F401
+    from PyQt5.QtGui import (  # noqa: F401
+        QColor, QFont, QIcon, QImage, QPainter, QPixmap, QStandardItem,
+        QStandardItemModel, QTextCursor,
+    )
     from PyQt5.QtNetwork import (  # noqa: F401
         QNetworkAccessManager, QNetworkReply, QNetworkRequest,
     )
     from PyQt5.QtWidgets import (  # noqa: F401
-        QAbstractItemView, QApplication, QCheckBox, QComboBox, QDialog, QFileDialog,
+        QAbstractItemView, QApplication, QCheckBox, QComboBox, QCompleter, QDialog,
+        QFileDialog,
         QDialogButtonBox, QDoubleSpinBox, QFormLayout, QGroupBox, QHBoxLayout,
         QLabel, QLineEdit, QListWidget, QListWidgetItem, QMenu, QMessageBox,
         QPlainTextEdit, QProgressBar, QPushButton, QSlider, QSpinBox,
@@ -24,15 +28,19 @@ try:
     QT_VERSION = 5
 except ImportError:
     from PyQt6.QtCore import (  # noqa: F401
-        QBuffer, QByteArray, QIODevice, QObject, QRect, QSize, QTimer, QUrl, Qt,
-        pyqtSignal,
+        QBuffer, QByteArray, QIODevice, QModelIndex, QObject, QRect, QSize, QTimer,
+        QUrl, Qt, pyqtSignal,
     )
-    from PyQt6.QtGui import QColor, QIcon, QImage, QPainter, QPixmap  # noqa: F401
+    from PyQt6.QtGui import (  # noqa: F401
+        QColor, QFont, QIcon, QImage, QPainter, QPixmap, QStandardItem,
+        QStandardItemModel, QTextCursor,
+    )
     from PyQt6.QtNetwork import (  # noqa: F401
         QNetworkAccessManager, QNetworkReply, QNetworkRequest,
     )
     from PyQt6.QtWidgets import (  # noqa: F401
-        QAbstractItemView, QApplication, QCheckBox, QComboBox, QDialog, QFileDialog,
+        QAbstractItemView, QApplication, QCheckBox, QComboBox, QCompleter, QDialog,
+        QFileDialog,
         QDialogButtonBox, QDoubleSpinBox, QFormLayout, QGroupBox, QHBoxLayout,
         QLabel, QLineEdit, QListWidget, QListWidgetItem, QMenu, QMessageBox,
         QPlainTextEdit, QProgressBar, QPushButton, QSlider, QSpinBox,

@@ -7,6 +7,8 @@ works with local models.
 - **Generate**: text to image at the canvas's aspect ratio.
 - **Refine**: image to image on the whole canvas or a selection.
 - **Inpaint**: regenerate a selection, using the surrounding canvas as context.
+- **Tag autocomplete** in both prompt boxes. NovelAI suggests tags as you type
+  (Tab/Enter to insert), and typing Japanese suggests the matching English tags.
 - Results go onto new layers and into a history list. Right-click a result to save
   NovelAI's original PNG (prompt info included), reuse its seed or prompt, or remove it.
   The history lives in memory and clears when Krita closes.
@@ -51,13 +53,15 @@ plugin/
     client.py               Async HTTP via QNetworkAccessManager
     canvas.py               Reading the canvas/selection, inserting layers
     docker.py               The docker UI
+    prompt_edit.py          Prompt box with tag autocomplete popup
+    tags.py                 Finding the tag at the cursor (plain Python, tested)
     settings.py             Settings stored in kritarc
     settings_dialog.py      Token and size settings
     qt.py                   PyQt5 (Krita 5) / PyQt6 (Krita 6) import shim
 scripts/
   install_dev.py            Link the plugin into Krita's pykrita folder
   package.py                Build the installable zip
-tests/                      pytest tests for api.py
+tests/                      pytest tests for api.py and tags.py
 ```
 
 To develop it against your own Krita, run this once and restart Krita after each change:
@@ -78,5 +82,4 @@ box accepts any model name you type.
 - Multi-character prompts (V4 character captions and positions)
 - Vibe transfer and precise reference images
 - Director tools (`/ai/augment-image`) and upscaling (`/ai/upscale`)
-- Tag autocomplete (`/ai/generate-image/suggest-tags`)
 - Anlas cost estimate before generating

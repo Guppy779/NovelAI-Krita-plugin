@@ -8,6 +8,7 @@ from krita import DockWidget
 
 from . import api, canvas, settings
 from .client import NovelAIClient
+from .prompt_edit import PromptEdit
 from .settings_dialog import SettingsDialog, max_pixels
 from .qt import (
     QAbstractItemView, QCheckBox, QComboBox, QDoubleSpinBox, QFileDialog, QFormLayout,
@@ -63,11 +64,11 @@ class NovelAIDocker(DockWidget):
         layout.addLayout(row)
 
         # Prompts.
-        self.prompt = QPlainTextEdit(settings.get("prompt"))
+        self.prompt = PromptEdit(settings.get("prompt"), self._suggest_tags)
         self.prompt.setPlaceholderText("Prompt, e.g. 1girl, silver hair, night sky, city lights")
         self.prompt.setMinimumHeight(70)
         layout.addWidget(self.prompt, 2)
-        self.negative = QPlainTextEdit(settings.get("negative_prompt"))
+        self.negative = PromptEdit(settings.get("negative_prompt"), self._suggest_tags)
         self.negative.setPlaceholderText("Undesired content")
         self.negative.setMinimumHeight(40)
         layout.addWidget(self.negative, 1)
@@ -276,6 +277,17 @@ class NovelAIDocker(DockWidget):
 
     def open_settings(self):
         SettingsDialog(self._client, self).exec()
+
+    def _suggest_tags(self, query, lang, on_results):
+        """Tag lookup used by both prompt boxes. Errors are ignored quietly:
+        autocomplete is a convenience and must not interrupt typing."""
+        token = settings.get("token")
+        if not token or not settings.get_bool("autocomplete"):
+            return None
+        model = self._model_name()
+        if model not in dict(api.MODELS):  # Typed names may be unknown to the endpoint.
+            model = api.DEFAULT_MODEL
+        return self._client.suggest_tags(token, model, query, lang, on_results, lambda error: None)
 
     # ---- Generation -------------------------------------------------------
 

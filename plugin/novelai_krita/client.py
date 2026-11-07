@@ -12,6 +12,7 @@ from .qt import QByteArray, QNetworkAccessManager, QNetworkReply, QNetworkReques
 USER_AGENT = b"NovelAI-Krita-plugin/0.1"
 GENERATE_TIMEOUT_MS = 5 * 60 * 1000
 DEFAULT_TIMEOUT_MS = 30 * 1000
+SUGGEST_TIMEOUT_MS = 10 * 1000
 
 
 class Job:
@@ -75,6 +76,13 @@ class NovelAIClient(QObject):
         body = QByteArray(json.dumps(payload).encode("utf-8"))
         reply = self._manager.post(request, body)
         return self._watch(reply, on_success, on_error, api.parse_images)
+
+    def suggest_tags(self, token, model, query, lang, on_success, on_error):
+        """GET /ai/generate-image/suggest-tags. ``on_success`` receives [TagSuggestion]."""
+        url = api.suggest_tags_url(model, query, lang)
+        request = self._request(url, token, SUGGEST_TIMEOUT_MS)
+        reply = self._manager.get(request)
+        return self._watch(reply, on_success, on_error, api.parse_tag_suggestions)
 
     def check_subscription(self, token, on_success, on_error):
         """GET /user/subscription. ``on_success`` receives the Anlas balance or None."""

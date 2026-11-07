@@ -1,8 +1,8 @@
-"""Settings dialog: API token, image size limit and inpainting context."""
+"""Settings dialog: API token, image size limit, inpainting context, autocomplete."""
 
 from . import api, settings
 from .qt import (
-    QDialog, QDialogButtonBox, QFormLayout, QHBoxLayout, QLabel, QLineEdit,
+    QCheckBox, QDialog, QDialogButtonBox, QFormLayout, QHBoxLayout, QLabel, QLineEdit,
     QPushButton, QSpinBox, Qt, QVBoxLayout,
 )
 
@@ -65,6 +65,13 @@ class SettingsDialog(QDialog):
         form.addRow("Max generation size", self.max_side)
         form.addRow("Selection context", self.padding)
 
+        self.autocomplete = QCheckBox("Suggest tags while typing prompts")
+        self.autocomplete.setChecked(settings.get_bool("autocomplete"))
+        self.autocomplete.setToolTip(
+            "Looks up the tag at the cursor with NovelAI (free, no Anlas).\n"
+            "Tab or Enter inserts the highlighted tag, Escape closes the list.")
+        form.addRow("Autocomplete", self.autocomplete)
+
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         buttons.accepted.connect(self.accept)
@@ -95,6 +102,7 @@ class SettingsDialog(QDialog):
         side = self.max_side.value()
         settings.set("max_pixels", side * side)
         settings.set("context_padding", self.padding.value())
+        settings.set("autocomplete", self.autocomplete.isChecked())
         super().accept()
 
     def done(self, result):

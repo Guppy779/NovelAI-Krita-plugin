@@ -14,6 +14,8 @@ import zipfile
 from dataclasses import dataclass, field
 from typing import List, Optional, Tuple
 
+from . import presets
+
 IMAGE_API = "https://image.novelai.net"
 GENERATE_URL = IMAGE_API + "/ai/generate-image"
 GENERATE_STREAM_URL = IMAGE_API + "/ai/generate-image-stream"
@@ -52,19 +54,6 @@ SAMPLERS = [
     ("k_dpmpp_sde", "DPM++ SDE"),
 ]
 NOISE_SCHEDULES = ["karras", "exponential", "polyexponential", "native"]
-
-# Tags the NovelAI web app appends when "Add Quality Tags" is on. The server
-# does not add them itself, so the plugin does it client side.
-QUALITY_TAGS = {
-    "4-5": ", very aesthetic, masterpiece, no text",
-    "4": ", no text, best quality, very aesthetic, absurdres",
-    "3": ", best quality, amazing quality, very aesthetic, absurdres",
-}
-
-DEFAULT_NEGATIVE_PROMPT = (
-    "lowres, artistic error, worst quality, bad quality, jpeg artifacts, "
-    "very displeasing, blurry, logo, watermark, signature"
-)
 
 # Opus subscribers generate without spending Anlas while staying within all
 # of these: an area of at most 1024 x 1024 pixels, 28 steps or fewer, and one
@@ -217,7 +206,7 @@ def _snap_side(value: int, minimum: int, limit: int, multiple: int) -> int:
 @dataclass
 class GenerationParams:
     prompt: str
-    negative_prompt: str = DEFAULT_NEGATIVE_PROMPT
+    negative_prompt: str = ""  # The user's own undesired content.
     model: str = DEFAULT_MODEL
     width: int = 832
     height: int = 1216
@@ -228,7 +217,8 @@ class GenerationParams:
     noise_schedule: str = "karras"
     seed: int = 0
     n_samples: int = 1
-    quality_tags: bool = True
+    quality: str = presets.STANDARD  # Quality tags: standard, light or off.
+    uc_preset: str = presets.DEFAULT_UC_PRESET  # Undesired Content preset name.
     # Image to image / inpainting. ``image`` and ``mask`` are base64 PNGs of
     # exactly width x height pixels; white in the mask means "regenerate".
     image: Optional[str] = None
@@ -248,11 +238,10 @@ class GenerationParams:
 
 def build_payload(p: GenerationParams) -> dict:
     """Build the JSON body for POST /ai/generate-image."""
-    family = model_family(p.model)
-    prompt = p.prompt.strip()
-    if p.quality_tags:
-        prompt += QUALITY_TAGS.get(family, "")  # Unknown for newer models.
-    negative = p.negative_prompt.strip()
+    # Quality tags and the Undesired Content preset are added here, as the
+    # NovelAI site does (see presets.py); the server adds neither.
+    prompt = presets.apply_quality(p.model, p.prompt.strip(), p.quality)
+    negative, uc_index = presets.apply_uc(p.model, p.prompt, p.negative_prompt, p.uc_preset)
     action = p.action
     model = inpainting_model(p.model) if action == "infill" else p.model
 
@@ -265,7 +254,8 @@ def build_payload(p: GenerationParams) -> dict:
         "steps": int(p.steps),
         "n_samples": int(p.n_samples),
         "seed": int(p.seed),
-        "qualityToggle": bool(p.quality_tags),
+        "qualityToggle": p.quality != presets.OFF,
+        "ucPreset": uc_index,
         "dynamic_thresholding": False,
         "controlnet_strength": 1,
         "legacy": False,

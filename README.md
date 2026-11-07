@@ -11,6 +11,8 @@ works with local models.
   limits (size, steps or images per request), and which one.
 - **Live preview**: watch the image form on the canvas while it generates (V4 and newer;
   can be turned off in Settings).
+- **Quality tags and Undesired Content presets** for every model, exactly as the NovelAI site
+  adds them.
 - **Tag autocomplete** in both prompt boxes. NovelAI suggests tags as you type
   (Tab/Enter to insert), and typing Japanese suggests the matching English tags.
 - Results go onto new layers and into a history list. Right-click a result to save
@@ -64,13 +66,14 @@ plugin/
     docker.py               The docker UI
     prompt_edit.py          Prompt box with tag autocomplete popup
     tags.py                 Finding the tag at the cursor (plain Python, tested)
+    presets.py              Quality tags and Undesired Content presets (plain Python, tested)
     settings.py             Settings stored in kritarc
     settings_dialog.py      Token and size settings
     qt.py                   PyQt5 (Krita 5) / PyQt6 (Krita 6) import shim
 scripts/
   install_dev.py            Link the plugin into Krita's pykrita folder
   package.py                Build the installable zip
-tests/                      pytest tests for api.py and tags.py
+tests/                      pytest tests for the plain-Python modules
 ```
 
 To develop it against your own Krita, run this once and restart Krita after each change:
@@ -81,9 +84,12 @@ python scripts/install_dev.py
 
 Run the tests with `python -m pytest`.
 
-API reference: https://image.novelai.net/docs/index.html. The spec doesn't list model names
-or quality tags. The values in `api.py` are taken from the NovelAI web app, and the model
-box accepts any model name you type.
+API reference: https://image.novelai.net/docs/index.html. The spec doesn't list model names,
+quality tags or Undesired Content presets. Model names in `api.py` come from the NovelAI web
+app (the model box accepts any name you type). Quality tags and presets in `presets.py` are
+copied from NovelAI's docs ([quality tags](https://docs.novelai.net/en/image/qualitytags),
+[undesired content](https://docs.novelai.net/en/image/undesiredcontent)) and combined the way
+the site does it.
 
 ## Roadmap
 

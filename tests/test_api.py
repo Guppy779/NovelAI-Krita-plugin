@@ -78,23 +78,30 @@ def test_model_helpers():
 
 
 def test_text_to_image_payload_v45():
-    p = api.GenerationParams(prompt="1girl, night sky", negative_prompt="lowres", seed=42)
+    p = api.GenerationParams(prompt="1girl, night sky", negative_prompt="red eyes", seed=42)
     payload = api.build_payload(p)
     assert payload["action"] == "generate"
     assert payload["model"] == "nai-diffusion-4-5-full"
     params = payload["parameters"]
-    assert payload["input"].startswith("1girl, night sky, very aesthetic")
+    assert payload["input"] == "1girl, night sky, location, very aesthetic, masterpiece, no text"
     assert params["v4_prompt"]["caption"]["base_caption"] == payload["input"]
-    assert params["v4_negative_prompt"]["caption"]["base_caption"] == "lowres"
+    negative = params["negative_prompt"]
+    assert negative.startswith("nsfw, lowres, artistic error") and negative.endswith(", red eyes")
+    assert params["v4_negative_prompt"]["caption"]["base_caption"] == negative
+    assert params["ucPreset"] == 0 and params["qualityToggle"] is True
     assert params["seed"] == 42 and params["width"] == 832 and params["height"] == 1216
     assert "image" not in params and "mask" not in params
     assert "sm" not in params
     json.dumps(payload)  # Must be serializable.
 
 
-def test_quality_tags_can_be_disabled():
-    payload = api.build_payload(api.GenerationParams(prompt="cat", quality_tags=False))
+def test_quality_tags_and_preset_can_be_turned_off():
+    payload = api.build_payload(api.GenerationParams(
+        prompt="cat", quality="off", uc_preset="None", negative_prompt="dog"))
     assert payload["input"] == "cat"
+    params = payload["parameters"]
+    assert params["negative_prompt"] == "nsfw, dog"
+    assert params["qualityToggle"] is False and params["ucPreset"] == 4
 
 
 def test_v3_payload_has_no_v4_fields():
@@ -105,10 +112,13 @@ def test_v3_payload_has_no_v4_fields():
     assert payload["input"].endswith("absurdres")
 
 
-def test_newer_model_gets_v4_payload_without_guessed_tags():
+def test_v5_payload():
     payload = api.build_payload(api.GenerationParams(prompt="cat", model="nai-diffusion-5-full"))
-    assert payload["input"] == "cat"
+    assert payload["input"] == "cat, very aesthetic, masterpiece, no text"
     assert "v4_prompt" in payload["parameters"] and "sm" not in payload["parameters"]
+    light = api.build_payload(api.GenerationParams(prompt="cat", model="nai-diffusion-5-full",
+                                                   quality="light"))
+    assert light["input"] == "cat, very aesthetic, amazing quality, no text"
 
 
 def test_img2img_payload():

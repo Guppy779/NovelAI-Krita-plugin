@@ -6,7 +6,7 @@ from dataclasses import dataclass
 
 from krita import DockWidget
 
-from . import api, canvas, settings
+from . import api, canvas, presets, settings
 from .client import NovelAIClient
 from .prompt_edit import PromptEdit
 from .settings_dialog import SettingsDialog, max_pixels
@@ -70,10 +70,29 @@ class NovelAIDocker(DockWidget):
         self.prompt.setPlaceholderText("Prompt, e.g. 1girl, silver hair, night sky, city lights")
         self.prompt.setMinimumHeight(70)
         layout.addWidget(self.prompt, 2)
-        self.negative = PromptEdit(settings.get("negative_prompt"), self._suggest_tags)
-        self.negative.setPlaceholderText("Undesired content")
+        self.negative = PromptEdit(settings.negative_prompt(), self._suggest_tags)
+        self.negative.setPlaceholderText("Undesired content (added after the preset)")
         self.negative.setMinimumHeight(40)
         layout.addWidget(self.negative, 1)
+
+        # Quality tags and Undesired Content preset, as on the NovelAI site:
+        # added to the request, not shown in the boxes. Choices depend on the model.
+        self.quality = QComboBox()
+        self.quality.setToolTip(
+            "Adds the model's quality tags to the end of the prompt, like the\n"
+            "NovelAI site's 'Add Quality Tags' toggle.")
+        self.uc_preset = QComboBox()
+        self.uc_preset.setToolTip(
+            "Undesired Content preset, put in front of your own undesired content,\n"
+            "like the NovelAI site's presets.")
+        form = QFormLayout()
+        form.setContentsMargins(0, 0, 0, 0)
+        form.addRow("Quality tags", self.quality)
+        form.addRow("Undesired preset", self.uc_preset)
+        layout.addLayout(form)
+        self._refresh_presets()
+        self.model.currentIndexChanged.connect(self._refresh_presets)
+        self.model.editTextChanged.connect(self._refresh_presets)
 
         # Strength.
         self.strength = QSlider(Qt.Orientation.Horizontal)
@@ -159,9 +178,6 @@ class NovelAIDocker(DockWidget):
         self.steps.valueChanged.connect(self._update_mode)
         self.n_samples.valueChanged.connect(self._update_mode)
 
-        self.quality_tags = QCheckBox("Add quality tags")
-        self.quality_tags.setChecked(settings.get_bool("quality_tags"))
-        form.addRow("", self.quality_tags)
 
         layout.addWidget(self.advanced)
         self.advanced_toggle.toggled.connect(self._toggle_advanced)
@@ -245,6 +261,33 @@ class NovelAIDocker(DockWidget):
                 return data
         return text
 
+    def _refresh_presets(self, *_):
+        """Fill the Quality tags and Undesired preset boxes for the current
+        model, keeping the current choices where the model has them."""
+        model = self._model_name()
+        quality = self.quality.currentData() if self.quality.count() else settings.quality()
+        preset = self.uc_preset.currentText() if self.uc_preset.count() else settings.get("uc_preset")
+
+        self.quality.blockSignals(True)
+        self.quality.clear()
+        for value, label in presets.quality_options(model):
+            self.quality.addItem(label, value)
+        index = self.quality.findData(quality)
+        if index < 0 and quality == presets.LIGHT:  # Light is V5 only.
+            index = self.quality.findData(presets.STANDARD)
+        self.quality.setCurrentIndex(max(0, index))
+        self.quality.blockSignals(False)
+
+        self.uc_preset.blockSignals(True)
+        self.uc_preset.clear()
+        names = presets.uc_options(model)
+        self.uc_preset.addItems(names)
+        for choice in (preset, presets.DEFAULT_UC_PRESET, presets.NONE):
+            if choice in names:
+                self.uc_preset.setCurrentIndex(names.index(choice))
+                break
+        self.uc_preset.blockSignals(False)
+
     def _toggle_advanced(self, on):
         self.advanced.setVisible(on)
         self.advanced_toggle.setArrowType(
@@ -308,7 +351,8 @@ class NovelAIDocker(DockWidget):
         settings.set("seed", self.seed.text().strip() or "0")
         settings.set("random_seed", self.random_seed.isChecked())
         settings.set("n_samples", self.n_samples.value())
-        settings.set("quality_tags", self.quality_tags.isChecked())
+        settings.set("quality_tags", self.quality.currentData())
+        settings.set("uc_preset", self.uc_preset.currentText())
         settings.set("show_advanced", self.advanced_toggle.isChecked())
 
     def open_settings(self):
@@ -385,7 +429,8 @@ class NovelAIDocker(DockWidget):
             noise_schedule=self.schedule.currentText(),
             seed=seed,
             n_samples=self.n_samples.value(),
-            quality_tags=self.quality_tags.isChecked(),
+            quality=self.quality.currentData(),
+            uc_preset=self.uc_preset.currentText(),
             strength=strength,
         )
         mode = api.selection_mode(params.model, strength) if region.mask is not None else None

@@ -72,6 +72,15 @@ class SettingsDialog(QDialog):
             "Tab or Enter inserts the highlighted tag, Escape closes the list.")
         form.addRow("Autocomplete", self.autocomplete)
 
+        self.full_image = QCheckBox("Add the whole image as the layer")
+        self.full_image.setChecked(settings.get_bool("inpaint_full_image"))
+        self.full_image.setToolTip(
+            "Off: the inpainted layer holds only the pixels NovelAI changed and is\n"
+            "transparent elsewhere, so layers below stay visible.\n"
+            "On: the layer is NovelAI's whole image for the area it was sent\n"
+            "(often the whole canvas), covering everything below it.")
+        form.addRow("Inpainting", self.full_image)
+
         buttons = QDialogButtonBox(
             QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel)
         buttons.accepted.connect(self.accept)
@@ -103,6 +112,7 @@ class SettingsDialog(QDialog):
         settings.set("max_pixels", side * side)
         settings.set("context_padding", self.padding.value())
         settings.set("autocomplete", self.autocomplete.isChecked())
+        settings.set("inpaint_full_image", self.full_image.isChecked())
         super().accept()
 
     def done(self, result):

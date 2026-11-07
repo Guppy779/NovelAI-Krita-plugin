@@ -35,9 +35,12 @@ MODELS = [
 ]
 DEFAULT_MODEL = "nai-diffusion-4-5-full"
 
-# Models the server has no "-inpainting" variant for (checked against
-# /ai/generate-image/suggest-tags, which answers "Model not found").
-NO_INPAINTING = {"nai-diffusion-5-curated"}
+# Inpainting models whose name isn't "<model>-inpainting". V5 Curated has no
+# inpainting model of its own; the NovelAI site uses V4.5 Curated's.
+INPAINTING_MODELS = {
+    "nai-diffusion-4-curated-preview": "nai-diffusion-4-curated-inpainting",
+    "nai-diffusion-5-curated": "nai-diffusion-4-5-curated-inpainting",
+}
 
 SAMPLERS = [
     ("k_euler_ancestral", "Euler Ancestral"),
@@ -94,13 +97,24 @@ def inpainting_model(model: str) -> str:
     """Map a base model to the model NovelAI uses for inpainting ("infill")."""
     if model.endswith("-inpainting"):
         return model
-    if model == "nai-diffusion-4-curated-preview":
-        return "nai-diffusion-4-curated-inpainting"
-    return model + "-inpainting"
+    return INPAINTING_MODELS.get(model, model + "-inpainting")
 
 
-def supports_inpainting(model: str) -> bool:
-    return model not in NO_INPAINTING
+def selection_mode(model: str, strength: float) -> str:
+    """How a selection is generated: "infill" (inpainting) or "img2img".
+
+    Inpainting is preferred because NovelAI then knows which part may change
+    and matches it to the surroundings. V4+ inpainting accepts a strength;
+    V3 inpainting only regenerates fully, so V3 uses image to image below 100%.
+    """
+    if strength >= 1.0 or is_v4(model):
+        return "infill"
+    return "img2img"
+
+
+def params_version(model: str) -> int:
+    """V5 models use parameter format 4, everything older format 3."""
+    return 4 if "diffusion-5" in model else 3
 
 
 def random_seed() -> int:
@@ -108,20 +122,29 @@ def random_seed() -> int:
 
 
 def fit_resolution(width: int, height: int, max_pixels: int = FREE_MAX_PIXELS,
-                   multiple: int = SIZE_MULTIPLE) -> Tuple[int, int]:
-    """Scale (width, height) up or down to fill at most ``max_pixels``.
+                   multiple: int = SIZE_MULTIPLE, upscale: bool = True) -> Tuple[int, int]:
+    """Generation size for an area of (width, height) canvas pixels.
 
-    Keeps the aspect ratio as closely as possible, rounds both sides down to
-    a multiple of ``multiple`` and keeps each side within [multiple, MAX_SIDE].
-    Small regions are scaled up so inpainting a small selection still gets a
-    full-resolution generation.
+    Keeps the aspect ratio as closely as possible, uses multiples of
+    ``multiple`` and keeps each side within [multiple, MAX_SIDE] and the
+    area within ``max_pixels``.
+
+    With ``upscale`` (text to image), small areas are scaled up to fill the
+    budget. Without it (an image is sent), areas that already fit are kept
+    at their own size, only rounded to the nearest multiple: scaling a
+    source image up blurs it, and NovelAI then generates blurry detail.
     """
     if width <= 0 or height <= 0:
         raise ValueError("width and height must be positive")
     scale = math.sqrt(max_pixels / float(width * height))
+    if not upscale and scale >= 1.0:
+        scale = 1.0
 
     def snap(value: float) -> int:
-        value = int(value // multiple) * multiple
+        if scale == 1.0:
+            value = int(round(value / multiple)) * multiple
+        else:
+            value = int(value // multiple) * multiple
         return max(multiple, min(MAX_SIDE, value))
 
     w, h = snap(width * scale), snap(height * scale)
@@ -131,6 +154,48 @@ def fit_resolution(width: int, height: int, max_pixels: int = FREE_MAX_PIXELS,
         else:
             h -= multiple
     return w, h
+
+
+def plan_region(canvas_w: int, canvas_h: int, sel_x: int, sel_y: int, sel_w: int,
+                sel_h: int, padding_percent: int, max_pixels: int = FREE_MAX_PIXELS,
+                multiple: int = SIZE_MULTIPLE) -> Tuple[int, int, int, int]:
+    """Choose the canvas area (x, y, w, h) to send for a selection.
+
+    Like the NovelAI site, the image is sent at its own resolution where
+    possible: rather than scaling a small area up (which blurs the result),
+    the area around the selection is widened at 1:1 until it reaches the
+    generation size limit or the canvas edge. ``padding_percent`` is the
+    minimum context around the selection. Only when that minimum is already
+    larger than the limit does the area get scaled down.
+    """
+    pad = int(max(sel_w, sel_h) * padding_percent / 100)
+    min_w = min(canvas_w, sel_w + 2 * pad)
+    min_h = min(canvas_h, sel_h + 2 * pad)
+    w, h = min_w, min_h
+    if w * h < max_pixels:
+        scale = math.sqrt(max_pixels / float(w * h))
+        w = min(canvas_w, MAX_SIDE, max(min_w, int(w * scale)))
+        h = min(canvas_h, MAX_SIDE, max(min_h, max_pixels // w))
+        w = min(canvas_w, MAX_SIDE, max(min_w, max_pixels // h))  # Re-spend leftover budget.
+        w = _snap_side(w, min_w, canvas_w, multiple)
+        h = _snap_side(h, min_h, canvas_h, multiple)
+
+    # Centre on the selection, then keep the area inside the canvas.
+    x = int(round(sel_x + sel_w / 2.0 - w / 2.0))
+    y = int(round(sel_y + sel_h / 2.0 - h / 2.0))
+    x = max(0, min(canvas_w - w, x))
+    y = max(0, min(canvas_h - h, y))
+    return x, y, w, h
+
+
+def _snap_side(value: int, minimum: int, limit: int, multiple: int) -> int:
+    """Round a side down to a multiple (so it is sent 1:1) if that still
+    covers ``minimum``; otherwise up, if the canvas allows; else unchanged."""
+    down = (value // multiple) * multiple
+    if down >= minimum and down > 0:
+        return down
+    up = -(-minimum // multiple) * multiple
+    return up if up <= limit else value
 
 
 @dataclass
@@ -176,7 +241,7 @@ def build_payload(p: GenerationParams) -> dict:
     model = inpainting_model(p.model) if action == "infill" else p.model
 
     params = {
-        "params_version": 3,
+        "params_version": params_version(p.model),
         "width": int(p.width),
         "height": int(p.height),
         "scale": float(p.scale),
@@ -224,9 +289,19 @@ def build_payload(p: GenerationParams) -> dict:
             "extra_noise_seed": int(p.seed),
         })
     elif action == "infill":
-        params.update({"image": p.image, "mask": p.mask})
+        params.update({
+            "image": p.image,
+            "mask": p.mask,
+            "noise": float(p.noise),
+            "extra_noise_seed": int(p.seed),
+        })
         if is_v4(p.model):
+            # As the NovelAI site sends it: inpaint strength below 100% goes in
+            # the nested "img2img" object (the API spec: "used by inpaint");
+            # at 100% the object is left out.
             params["inpaintImg2ImgStrength"] = float(p.strength)
+            if p.strength < 1.0:
+                params["img2img"] = {"strength": float(p.strength), "color_correct": True}
 
     params.update(p.extra)
     return {"input": prompt, "model": model, "action": action, "parameters": params}

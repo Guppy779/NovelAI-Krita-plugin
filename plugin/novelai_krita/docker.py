@@ -247,8 +247,12 @@ class NovelAIDocker(DockWidget):
         if doc is None:
             text = "Open a document to generate."
         elif canvas.has_selection(doc):
-            text = ("Inpaint the selection" if value >= 100
-                    else "Refine the selection (image to image)")
+            mode = api.selection_mode(self._model_name(), value / 100.0)
+            if mode == "infill":
+                text = ("Inpaint the selection" if value >= 100
+                        else "Inpaint the selection at %d%% strength" % value)
+            else:
+                text = "Refine the selection (image to image, edges may show)"
         else:
             text = ("Generate a new image for the whole canvas" if value >= 100
                     else "Refine the whole canvas (image to image)")
@@ -330,9 +334,13 @@ class NovelAIDocker(DockWidget):
             return
         self._save_settings()
 
-        region = canvas.get_region(doc, settings.get_int("context_padding"))
-        width, height = api.fit_resolution(region.width, region.height, max_pixels())
         strength = self.strength.value() / 100.0
+        region = canvas.get_region(doc, settings.get_int("context_padding"), max_pixels())
+        # Only plain text to image is scaled up to fill the budget; when the
+        # canvas is sent, it goes at its own resolution so it stays sharp.
+        sends_image = strength < 1.0 or region.mask is not None
+        width, height = api.fit_resolution(region.width, region.height, max_pixels(),
+                                           upscale=not sends_image)
         params = api.GenerationParams(
             prompt=prompt,
             negative_prompt=self.negative.toPlainText(),
@@ -349,18 +357,20 @@ class NovelAIDocker(DockWidget):
             quality_tags=self.quality_tags.isChecked(),
             strength=strength,
         )
-        if (region.mask is not None and strength >= 1.0
-                and not api.supports_inpainting(params.model)):
-            self.status.setText(
-                "%s has no inpainting model. Pick another model, or lower "
-                "Strength below 100%% to refine the selection instead."
-                % self.model.currentText())
-            return
+        mode = api.selection_mode(params.model, strength) if region.mask is not None else None
+        # For inpainting, the image sent is kept to find which pixels NovelAI
+        # changed; the result layer keeps exactly those (see compose_result).
+        sent_image = None
         if strength < 1.0 or region.mask is not None:
             source = canvas.resize(canvas.read_image(doc, region), width, height)
             params.image = canvas.to_base64_png(source)
-            if strength >= 1.0:  # Selection at full strength: inpaint.
-                params.mask = canvas.to_base64_png(canvas.api_mask(region.mask, width, height))
+            if mode == "infill":
+                params.mask = canvas.to_base64_png(canvas.api_mask(region, width, height))
+                if settings.get_bool("inpaint_full_image"):
+                    # Keep NovelAI's whole image: drop the selection cut.
+                    region = canvas.Region(region.x, region.y, region.width, region.height)
+                else:
+                    sent_image = source
         if self.random_seed.isChecked():
             self.seed.setText(str(seed))  # Show which random seed was used.
 
@@ -370,7 +380,7 @@ class NovelAIDocker(DockWidget):
         self._set_busy(True)
         self._job = self._client.generate(
             token, payload,
-            lambda images: self._on_images(images, doc, region, seed, prompt),
+            lambda images: self._on_images(images, doc, region, seed, prompt, sent_image),
             self._on_error)
 
     def cancel(self):
@@ -385,7 +395,7 @@ class NovelAIDocker(DockWidget):
         self._set_busy(False)
         self.status.setText(message)
 
-    def _on_images(self, images, doc, region, seed, prompt):
+    def _on_images(self, images, doc, region, seed, prompt, sent_image=None):
         self._job = None
         self._set_busy(False)
         elapsed = time.monotonic() - self._started
@@ -400,7 +410,7 @@ class NovelAIDocker(DockWidget):
             if image.isNull():
                 continue
             result = Result(
-                image=canvas.compose_result(image, region),
+                image=canvas.compose_result(image, region, sent_image),
                 x=region.x, y=region.y,
                 seed=image_seed if image_seed is not None else seed + index,
                 prompt=prompt, document=doc, original=data)

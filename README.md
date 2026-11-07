@@ -37,11 +37,15 @@ The Strength slider and the current selection decide what Generate does:
 | none | 100% | New image for the whole canvas |
 | none | < 100% | Image to image on the whole canvas |
 | yes | 100% | Inpaint the selection |
-| yes | < 100% | Image to image on the selection only |
+| yes | < 100% | Inpaint the selection at that strength (V3 models: image to image) |
 
-The region is scaled to fit the max generation size from Settings, in multiples of 64. The result is scaled back afterwards.
-Small selections are generated at full resolution and scaled down, which keeps detail.
-A feathered selection blends the result softly into the canvas.
+When the canvas is sent (refining or inpainting), it goes at its own resolution, like the
+NovelAI site: for a selection, the area around it is widened up to the max generation size
+from Settings (or the canvas edge) instead of being scaled up, which would blur the result.
+Only areas larger than that size are scaled down. Text to image fills the max size and the
+result is scaled to the canvas.
+Inpainted layers keep exactly the pixels NovelAI changed, including the few pixels past the
+selection where it blends the new content in, so edges match the NovelAI site.
 
 ## Development
 

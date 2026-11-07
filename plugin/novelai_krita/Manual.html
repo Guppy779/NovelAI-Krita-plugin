@@ -22,8 +22,15 @@ Settings.</p>
   <li><b>No selection, 100%</b>: generate a new image the size of the canvas.</li>
   <li><b>No selection, below 100%</b>: refine the whole canvas (image to image).</li>
   <li><b>Selection, 100%</b>: inpaint the selection using the surrounding canvas as context.</li>
-  <li><b>Selection, below 100%</b>: refine only the selected area.</li>
+  <li><b>Selection, below 100%</b>: inpaint the selection at that strength, so
+      more of the original survives (V4 and newer; V3 models refine it with
+      image to image instead).</li>
 </ul>
+<p>An inpainted layer contains exactly the pixels NovelAI changed. That can reach a
+few pixels past the selection, where NovelAI blends the new content into the
+original, the same as on the NovelAI site. To get NovelAI's whole image as the
+layer instead, turn on <b>Inpainting: Add the whole image as the layer</b> in
+Settings (the layer then covers everything below it).</p>
 <p>Every result is added as a new layer above the active layer and kept in the
 history at the bottom of the docker. Double-click a thumbnail to add it again.
 Right-click it to save it to disk, reuse its seed or prompt, or remove it from

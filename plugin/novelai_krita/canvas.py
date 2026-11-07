@@ -6,6 +6,7 @@ from typing import Optional
 
 from krita import Krita
 
+from . import api
 from .qt import QBuffer, QByteArray, QColor, QIODevice, QImage, QPainter, Qt, image_bytes
 
 # Lookup table that turns any partially selected pixel into fully selected,
@@ -34,17 +35,16 @@ def has_selection(doc) -> bool:
     return selection is not None and selection.width() > 0 and selection.height() > 0
 
 
-def get_region(doc, padding_percent: int) -> Region:
-    """Return the selection (grown by some context) or the whole canvas."""
+def get_region(doc, padding_percent: int, max_pixels: int) -> Region:
+    """Return the area around the selection (see api.plan_region) or the
+    whole canvas."""
     if not has_selection(doc):
         return Region(0, 0, doc.width(), doc.height())
 
     selection = doc.selection()
-    sx, sy, sw, sh = selection.x(), selection.y(), selection.width(), selection.height()
-    pad = int(max(sw, sh) * padding_percent / 100)
-    x, y = max(0, sx - pad), max(0, sy - pad)
-    right, bottom = min(doc.width(), sx + sw + pad), min(doc.height(), sy + sh + pad)
-    width, height = right - x, bottom - y
+    x, y, width, height = api.plan_region(
+        doc.width(), doc.height(), selection.x(), selection.y(),
+        selection.width(), selection.height(), padding_percent, max_pixels)
 
     data = bytes(selection.pixelData(x, y, width, height))
     mask = QImage(data, width, height, width, QImage.Format.Format_Grayscale8).copy()
@@ -69,12 +69,23 @@ def resize(image: QImage, width: int, height: int) -> QImage:
                         Qt.TransformationMode.SmoothTransformation)
 
 
-def api_mask(mask: QImage, width: int, height: int) -> QImage:
-    """Black/white mask at generation size (white = regenerate)."""
-    scaled = resize(mask, width, height).convertToFormat(QImage.Format.Format_Grayscale8)
-    stride = scaled.bytesPerLine()
-    data = image_bytes(scaled).translate(_BINARIZE)
-    return QImage(data, width, height, stride, QImage.Format.Format_Grayscale8).copy()
+MASK_GRID = 8  # NovelAI works on 8x8 pixel cells (one latent pixel each).
+
+
+def api_mask(region: Region, width: int, height: int) -> QImage:
+    """Black/white mask at generation size (white = regenerate).
+
+    Snapped to NovelAI's 8 px grid like the NovelAI site does: a cell is
+    regenerated if any part of it is selected, and edges stay hard (no
+    smoothing when scaling up).
+    """
+    cells_w, cells_h = width // MASK_GRID, height // MASK_GRID
+    cells = resize(region.mask, cells_w, cells_h).convertToFormat(QImage.Format.Format_Grayscale8)
+    data = image_bytes(cells).translate(_BINARIZE)
+    cells = QImage(data, cells_w, cells_h, cells.bytesPerLine(),
+                   QImage.Format.Format_Grayscale8).copy()
+    return cells.scaled(width, height, Qt.AspectRatioMode.IgnoreAspectRatio,
+                        Qt.TransformationMode.FastTransformation)
 
 
 def to_base64_png(image: QImage) -> str:
@@ -84,21 +95,70 @@ def to_base64_png(image: QImage) -> str:
     return base64.b64encode(bytes(buffer.data())).decode("ascii")
 
 
-def compose_result(result: QImage, region: Region) -> QImage:
-    """Scale a generated image back to the region, keeping only the selection."""
+# Per-channel differences up to this much (out of 255) count as unchanged.
+CHANGE_THRESHOLD = 2
+
+
+def changed_pixels(result: QImage, sent: QImage) -> QImage:
+    """Grayscale mask (white = changed) of where ``result`` differs from ``sent``.
+
+    For inpainting, NovelAI returns the whole image: the masked cells newly
+    generated and blended into the original at their edges, everything else
+    the original. Keeping exactly the changed pixels reproduces what the
+    NovelAI site shows, without cutting through its blended edge.
+    """
+    a = result.convertToFormat(QImage.Format.Format_RGB32)
+    b = resize(sent, a.width(), a.height()).convertToFormat(QImage.Format.Format_RGB32)
+    painter = QPainter(a)
+    painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_Difference)
+    painter.drawImage(0, 0, b)
+    painter.end()
+    # Threshold every channel byte, then any channel over -> pixel changed.
+    table = bytes([0] * (CHANGE_THRESHOLD + 1) + [255] * (255 - CHANGE_THRESHOLD))
+    data = image_bytes(a).translate(table)
+    flags = QImage(data, a.width(), a.height(), a.bytesPerLine(),
+                   QImage.Format.Format_RGB32).copy()
+    gray = flags.convertToFormat(QImage.Format.Format_Grayscale8)
+    data = image_bytes(gray).translate(_BINARIZE)
+    return QImage(data, gray.width(), gray.height(), gray.bytesPerLine(),
+                  QImage.Format.Format_Grayscale8).copy()
+
+
+def _apply_alpha(image: QImage, mask: QImage) -> None:
+    """Multiply ``image``'s alpha by a grayscale mask of the same size."""
+    # Reinterpret the grayscale bytes as alpha. (convertToFormat would
+    # treat grayscale as opaque and give a fully opaque mask.)
+    alpha = QImage(image_bytes(mask), mask.width(), mask.height(),
+                   mask.bytesPerLine(), QImage.Format.Format_Alpha8).copy()
+    painter = QPainter(image)
+    painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_DestinationIn)
+    painter.drawImage(0, 0, alpha)
+    painter.end()
+
+
+def compose_result(result: QImage, region: Region, sent: Optional[QImage] = None) -> QImage:
+    """Scale a generated image back to the region and make it a layer.
+
+    Inpainting (``sent`` given): keep the pixels NovelAI changed.
+    Otherwise with a selection: keep the selection. Without one: keep all.
+    """
+    if region.mask is not None and sent is not None:
+        # Scaling only happens when the area was too big to send 1:1.
+        mask = _map_binarize(resize(changed_pixels(result, sent), region.width, region.height))
+    else:
+        mask = region.mask
     image = resize(result, region.width, region.height)
     image = image.convertToFormat(QImage.Format.Format_ARGB32_Premultiplied)
-    if region.mask is not None:
-        # Reinterpret the grayscale bytes as alpha. (convertToFormat would
-        # treat grayscale as opaque and give a fully opaque mask.)
-        mask = region.mask
-        alpha = QImage(image_bytes(mask), mask.width(), mask.height(),
-                       mask.bytesPerLine(), QImage.Format.Format_Alpha8).copy()
-        painter = QPainter(image)
-        painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_DestinationIn)
-        painter.drawImage(0, 0, alpha)
-        painter.end()
+    if mask is not None:
+        _apply_alpha(image, mask)
     return image.convertToFormat(QImage.Format.Format_ARGB32)
+
+
+def _map_binarize(mask: QImage) -> QImage:
+    gray = mask.convertToFormat(QImage.Format.Format_Grayscale8)
+    data = image_bytes(gray).translate(_BINARIZE)
+    return QImage(data, gray.width(), gray.height(), gray.bytesPerLine(),
+                  QImage.Format.Format_Grayscale8).copy()
 
 
 def insert_layer(doc, image: QImage, x: int, y: int, name: str, visible: bool = True):

@@ -26,6 +26,7 @@ DEFAULTS = {
     "show_advanced": "false",
     "save_dir": "",
     "autocomplete": "true",
+    "inpaint_full_image": "false",
 }
 
 

@@ -5,6 +5,9 @@ from .qt import (
     QCheckBox, QDialog, QDialogButtonBox, QFormLayout, QHBoxLayout, QLabel, QLineEdit,
     QPushButton, QSpinBox, Qt, QVBoxLayout,
 )
+from .version import __version__
+
+PROJECT_URL = "https://github.com/Guppy779/NovelAI-Krita-plugin"
 
 TOKEN_HELP = (
     "Use a <b>Persistent API Token</b>: on novelai.net open "
@@ -103,8 +106,14 @@ class SettingsDialog(QDialog):
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)
 
+        about = QLabel('NovelAI for Krita %s &middot; <a href="%s">Project page</a>'
+                       % (__version__, PROJECT_URL))
+        about.setTextFormat(Qt.TextFormat.RichText)
+        about.setOpenExternalLinks(True)
+
         layout = QVBoxLayout(self)
         layout.addLayout(form)
+        layout.addWidget(about)
         layout.addWidget(buttons)
 
     def _test(self):

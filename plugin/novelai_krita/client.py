@@ -8,8 +8,9 @@ import json
 
 from . import api
 from .qt import QByteArray, QNetworkAccessManager, QNetworkReply, QNetworkRequest, QObject, QUrl
+from .version import __version__
 
-USER_AGENT = b"NovelAI-Krita-plugin/0.1"
+USER_AGENT = ("NovelAI-Krita-plugin/%s" % __version__).encode("ascii")
 GENERATE_TIMEOUT_MS = 5 * 60 * 1000
 DEFAULT_TIMEOUT_MS = 30 * 1000
 SUGGEST_TIMEOUT_MS = 10 * 1000

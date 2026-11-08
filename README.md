@@ -223,3 +223,11 @@ quality tags or Undesired Content presets:
   ([quality tags](https://docs.novelai.net/en/image/qualitytags),
   [undesired content](https://docs.novelai.net/en/image/undesiredcontent)) and combined the
   way the site combines them.
+
+## License
+
+Copyright © 2026 Guppy779.
+
+Released under the [GNU General Public License v3.0](LICENSE). You're free to use, study,
+change and share the plugin. If you distribute a modified version, it must stay under the
+GPL-3.0 with its source code available.

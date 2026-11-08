@@ -16,6 +16,8 @@ def main():
             if path.is_dir() or "__pycache__" in path.parts or path.suffix == ".pyc":
                 continue
             archive.write(path, path.relative_to(PLUGIN).as_posix())
+        # Ship the license inside the plugin folder so it is installed with it.
+        archive.write(ROOT / "LICENSE", "novelai_krita/LICENSE")
     print("Wrote", target)
 
 

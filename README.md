@@ -67,6 +67,19 @@ tick **NovelAI Image Generation**, and restart Krita again.
    add undesired content.
 3. Click **Generate**. The result is added as a new layer above the active layer.
 
+### Settings per document
+
+Each document keeps its own prompt, undesired content and generation settings (model,
+presets, strength, steps, sampler, seed and so on). Switching to another document switches
+the panel to that document's settings.
+
+- They're saved inside the `.kra` file, so reopening it brings them back. Saving as PNG or
+  another flat format doesn't keep them.
+- A new document, or an image without saved settings, starts with the settings of your last
+  generation and empty prompts.
+- Changing only the prompt doesn't mark the document as modified, so save it yourself if
+  you want to keep a prompt you haven't generated with yet.
+
 ### What Generate does
 
 What Generate does depends on two things: the **Strength** slider, and whether part of the
@@ -153,6 +166,9 @@ Click **Settings** in the panel:
 
 - The API token is stored in plain text in Krita's settings file (`kritarc`) on your
   computer. It is only sent to NovelAI.
+- Your prompts are stored only inside the documents you save as `.kra`, not in `kritarc`.
+  Share a `.kra` file and its prompts go with it. `kritarc` keeps the other settings of
+  your last generation, for new documents.
 - The plugin talks only to `image.novelai.net`. It sends your prompts, and when you refine or
   inpaint, the part of the canvas being worked on.
 - The plugin does not save results to disk on its own. Only **Save image…** writes a file.
@@ -191,6 +207,7 @@ plugin/
     client.py               Async HTTP via QNetworkAccessManager
     canvas.py               Reading the canvas/selection, inserting layers
     docker.py               The docker UI
+    doc_state.py            Per-document settings stored in the .kra (plain Python, tested)
     prompt_edit.py          Prompt box with tag autocomplete popup
     tags.py                 Finding the tag at the cursor (plain Python, tested)
     presets.py              Quality tags and Undesired Content presets (plain Python, tested)

@@ -6,7 +6,7 @@ from dataclasses import dataclass
 
 from krita import DockWidget
 
-from . import api, canvas, presets, settings
+from . import api, canvas, doc_state, presets, settings
 from .client import NovelAIClient
 from .prompt_edit import PromptEdit
 from .settings_dialog import SettingsDialog, max_pixels
@@ -42,6 +42,10 @@ class NovelAIDocker(DockWidget):
         self._next_id = 0
         self._preview = None  # Temporary "NovelAI preview" layer while streaming.
         self._preview_doc = None
+        # Each document keeps its own prompt and settings (see doc_state.py).
+        self._doc = None  # The document the panel currently shows.
+        self._loading = False  # Filling the panel from a document's settings.
+        self._edited_without_doc = False
 
         root = QWidget(self)
         layout = QVBoxLayout(root)
@@ -81,11 +85,11 @@ class NovelAIDocker(DockWidget):
         layout.addLayout(row)
 
         # Prompts.
-        self.prompt = PromptEdit(settings.get("prompt"), self._suggest_tags)
+        self.prompt = PromptEdit("", self._suggest_tags)
         self.prompt.setPlaceholderText("Prompt, e.g. 1girl, silver hair, night sky, city lights")
         self.prompt.setMinimumHeight(70)
         layout.addWidget(self.prompt, 2)
-        self.negative = PromptEdit(settings.get("negative_prompt"), self._suggest_tags)
+        self.negative = PromptEdit("", self._suggest_tags)
         self.negative.setPlaceholderText("Undesired content (added after the preset)")
         self.negative.setMinimumHeight(40)
         layout.addWidget(self.negative, 1)
@@ -244,6 +248,17 @@ class NovelAIDocker(DockWidget):
 
         self.setWidget(root)
 
+        for signal in (
+                self.prompt.textChanged, self.negative.textChanged,
+                self.model.currentIndexChanged, self.model.editTextChanged,
+                self.quality.activated, self.uc_preset.activated,
+                self.strength.valueChanged, self.steps.valueChanged,
+                self.scale.valueChanged, self.rescale.valueChanged,
+                self.sampler.currentIndexChanged, self.schedule.currentIndexChanged,
+                self.seed.textChanged, self.random_seed.toggled,
+                self.n_samples.valueChanged):
+            signal.connect(self._state_changed)
+
         # Krita has no selection-changed signal, so poll to keep the mode label current.
         self._timer = QTimer(self)
         self._timer.timeout.connect(self._update_mode)
@@ -347,6 +362,7 @@ class NovelAIDocker(DockWidget):
             Qt.ArrowType.DownArrow if on else Qt.ArrowType.RightArrow)
 
     def _update_mode(self):
+        self._follow_document()
         value = self.strength.value()
         self.strength_label.setText("%d%%" % value)
         if not self.isVisible():
@@ -392,21 +408,109 @@ class NovelAIDocker(DockWidget):
         self.cancel_button.setVisible(busy)
         self.progress.setVisible(busy)
 
-    def _save_settings(self):
-        settings.set("model", self._model_name())
-        settings.set("prompt", self.prompt.toPlainText())
-        settings.set("negative_prompt", self.negative.toPlainText())
-        settings.set("strength", self.strength.value())
-        settings.set("steps", self.steps.value())
-        settings.set("scale", self.scale.value())
-        settings.set("cfg_rescale", self.rescale.value())
-        settings.set("sampler", self.sampler.currentData())
-        settings.set("noise_schedule", self.schedule.currentText())
-        settings.set("seed", self.seed.text().strip() or "0")
-        settings.set("random_seed", self.random_seed.isChecked())
-        settings.set("n_samples", self.n_samples.value())
-        settings.set("quality_tags", self._quality_choice)
-        settings.set("uc_preset", self._uc_choice)
+    # ---- Per-document settings ---------------------------------------------
+
+    def _panel_state(self):
+        """The panel's prompt and generation settings (see doc_state.FIELDS)."""
+        return {
+            "prompt": self.prompt.toPlainText(),
+            "negative_prompt": self.negative.toPlainText(),
+            "model": self._model_name(),
+            "quality_tags": self._quality_choice,
+            "uc_preset": self._uc_choice,
+            "strength": self.strength.value(),
+            "steps": self.steps.value(),
+            "scale": self.scale.value(),
+            "cfg_rescale": self.rescale.value(),
+            "sampler": self.sampler.currentData(),
+            "noise_schedule": self.schedule.currentText(),
+            "seed": self.seed.text().strip() or "0",
+            "random_seed": self.random_seed.isChecked(),
+            "n_samples": self.n_samples.value(),
+        }
+
+    @staticmethod
+    def _last_used_state():
+        """What a document without its own settings starts with: the settings
+        of the last generation, with empty prompts."""
+        return {
+            "prompt": "",
+            "negative_prompt": "",
+            "model": settings.get("model"),
+            "quality_tags": settings.get("quality_tags"),
+            "uc_preset": settings.get("uc_preset"),
+            "strength": settings.get_int("strength"),
+            "steps": settings.get_int("steps"),
+            "scale": settings.get_float("scale"),
+            "cfg_rescale": settings.get_float("cfg_rescale"),
+            "sampler": settings.get("sampler"),
+            "noise_schedule": settings.get("noise_schedule"),
+            "seed": settings.get("seed"),
+            "random_seed": settings.get_bool("random_seed"),
+            "n_samples": settings.get_int("n_samples"),
+        }
+
+    def _apply_state(self, state):
+        """Fill the panel from a document's settings (missing ones: last used)."""
+        values = self._last_used_state()
+        values.update(state)
+        self._loading = True
+        try:
+            self.prompt.setPlainText(values["prompt"])
+            self.negative.setPlainText(values["negative_prompt"])
+            self._quality_choice = values["quality_tags"]
+            self._uc_choice = values["uc_preset"]
+            self._set_model(values["model"])
+            self._refresh_presets()
+            self.strength.setValue(values["strength"])
+            self.steps.setValue(values["steps"])
+            self.scale.setValue(values["scale"])
+            self.rescale.setValue(values["cfg_rescale"])
+            self._select_data(self.sampler, values["sampler"])
+            self.schedule.setCurrentText(values["noise_schedule"])
+            self.seed.setText(values["seed"])
+            self.random_seed.setChecked(values["random_seed"])
+            self.n_samples.setValue(values["n_samples"])
+        finally:
+            self._loading = False
+
+    def _follow_document(self):
+        """Show the active document's settings when another document becomes active."""
+        doc = canvas.active_document()
+        if canvas.same_document(doc, self._doc):
+            return
+        self._doc = doc
+        if doc is None:
+            return  # Keep showing the last document's settings.
+        stored = doc_state.decode(canvas.read_annotation(doc, doc_state.ANNOTATION))
+        if stored:
+            self._apply_state(stored)
+        elif not self._edited_without_doc:
+            self._apply_state(self._last_used_state())
+        # Otherwise the document takes what was typed while none was open.
+        self._edited_without_doc = False
+        self._write_state()
+
+    def _state_changed(self, *_):
+        if self._loading:
+            return
+        if self._doc is None:
+            self._edited_without_doc = True
+        else:
+            self._write_state()
+
+    def _write_state(self):
+        """Store the panel's settings in the document (saved with the .kra)."""
+        if self._doc is None or not canvas.document_is_open(self._doc):
+            return
+        canvas.write_annotation(self._doc, doc_state.ANNOTATION, doc_state.DESCRIPTION,
+                                doc_state.encode(self._panel_state()))
+
+    def _save_last_used(self):
+        """Remember the settings (not the prompts) for documents without their own."""
+        for key, value in self._panel_state().items():
+            if key not in doc_state.PROMPTS:
+                settings.set(key, value)
         settings.set("show_advanced", self.advanced_toggle.isChecked())
 
     def open_settings(self):
@@ -446,6 +550,7 @@ class NovelAIDocker(DockWidget):
         if doc is None:
             self.status.setText("Open or create a document first.")
             return
+        self._follow_document()  # Use this document's own settings.
         if not self._model_name():
             self.status.setText("Choose or type a model first.")
             return
@@ -465,7 +570,7 @@ class NovelAIDocker(DockWidget):
         except ValueError as exc:
             self.status.setText(str(exc))
             return
-        self._save_settings()
+        self._save_last_used()
 
         strength = self.strength.value() / 100.0
         region = canvas.get_region(doc, settings.get_int("context_padding"), max_pixels())

@@ -216,5 +216,22 @@ def remove_preview(doc, node) -> None:
     doc.refreshProjection()
 
 
+def read_annotation(doc, key: str) -> bytes:
+    """A document annotation's bytes (saved in the .kra), or b"" if it has none."""
+    data = doc.annotation(key)
+    return bytes(data) if data is not None and data.size() > 0 else b""
+
+
+def write_annotation(doc, key: str, description: str, data: bytes) -> None:
+    # Doesn't mark the document as modified; it's saved with the next save.
+    doc.setAnnotation(key, description, QByteArray(data))
+
+
+def same_document(a, b) -> bool:
+    if a is None or b is None:
+        return a is b
+    return a == b
+
+
 def document_is_open(doc) -> bool:
     return doc is not None and any(d == doc for d in Krita.instance().documents())

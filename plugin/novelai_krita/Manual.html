@@ -10,6 +10,12 @@
   <li>Click <b>Settings</b> in the docker and paste a NovelAI <b>Persistent API Token</b>
       (novelai.net &rarr; User Settings &rarr; Account &rarr; Get Persistent API Token).</li>
 </ol>
+<h4>Settings per document</h4>
+<p>Each document keeps its own prompt, undesired content and generation settings,
+and the panel switches with the active document. They are saved inside the
+<b>.kra</b> file (not in flat formats such as PNG). New documents start with the
+settings of your last generation and empty prompts. Changing only the prompt
+doesn't mark the document as modified, so save it to keep the prompt.</p>
 <h4>Quality tags and Undesired preset</h4>
 <p>These work like the toggles under the NovelAI site's prompt box. They are added
 to the request but not shown in the text boxes.</p>

@@ -1,4 +1,8 @@
-"""Persistent plugin settings, stored in Krita's own settings file (kritarc)."""
+"""Plugin settings, stored in Krita's own settings file (kritarc).
+
+Prompts aren't stored here: each document keeps its own (see doc_state.py).
+The generation settings here are the last used ones, for new documents.
+"""
 
 from krita import Krita
 
@@ -9,8 +13,6 @@ GROUP = "NovelAIKrita"
 DEFAULTS = {
     "token": "",
     "model": api.DEFAULT_MODEL,
-    "prompt": "",
-    "negative_prompt": "",
     "strength": "100",
     "steps": "28",
     "scale": "5.0",

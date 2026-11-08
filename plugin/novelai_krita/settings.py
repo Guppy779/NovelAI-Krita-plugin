@@ -60,21 +60,3 @@ def set(key: str, value) -> None:  # noqa: A001 - mirrors get()
         value = "true" if value else "false"
     Krita.instance().writeSetting(GROUP, key, str(value))
 
-
-# Before Undesired Content presets existed, the plugin pre-filled this text
-# into the box. It's now covered by the presets, so it's cleared on load.
-LEGACY_NEGATIVE_PROMPT = (
-    "lowres, artistic error, worst quality, bad quality, jpeg artifacts, "
-    "very displeasing, blurry, logo, watermark, signature"
-)
-
-
-def negative_prompt() -> str:
-    text = get("negative_prompt")
-    return "" if text.strip() == LEGACY_NEGATIVE_PROMPT else text
-
-
-def quality() -> str:
-    """Quality tag level; older versions stored true/false."""
-    value = get("quality_tags").lower()
-    return {"true": presets.STANDARD, "false": presets.OFF}.get(value, value)

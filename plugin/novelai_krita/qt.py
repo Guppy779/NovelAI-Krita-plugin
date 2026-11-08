@@ -6,8 +6,8 @@ which work with both bindings.
 
 try:
     from PyQt5.QtCore import (  # noqa: F401
-        QBuffer, QByteArray, QIODevice, QModelIndex, QObject, QRect, QSize, QTimer,
-        QUrl, Qt, pyqtSignal,
+        QBuffer, QByteArray, QIODevice, QModelIndex, QObject, QSize, QTimer,
+        QUrl, Qt,
     )
     from PyQt5.QtGui import (  # noqa: F401
         QColor, QFont, QIcon, QImage, QPainter, QPixmap, QStandardItem,
@@ -17,19 +17,16 @@ try:
         QNetworkAccessManager, QNetworkReply, QNetworkRequest,
     )
     from PyQt5.QtWidgets import (  # noqa: F401
-        QAbstractItemView, QApplication, QCheckBox, QComboBox, QCompleter, QDialog,
-        QFileDialog,
-        QDialogButtonBox, QDoubleSpinBox, QFormLayout, QGroupBox, QHBoxLayout,
+        QAbstractItemView, QCheckBox, QComboBox, QCompleter, QDialog, QDialogButtonBox,
+        QDoubleSpinBox, QFileDialog, QFormLayout, QHBoxLayout,
         QLabel, QLineEdit, QListWidget, QListWidgetItem, QMenu, QMessageBox,
         QPlainTextEdit, QProgressBar, QPushButton, QSlider, QSpinBox,
         QToolButton, QVBoxLayout, QWidget,
     )
-
-    QT_VERSION = 5
 except ImportError:
     from PyQt6.QtCore import (  # noqa: F401
-        QBuffer, QByteArray, QIODevice, QModelIndex, QObject, QRect, QSize, QTimer,
-        QUrl, Qt, pyqtSignal,
+        QBuffer, QByteArray, QIODevice, QModelIndex, QObject, QSize, QTimer,
+        QUrl, Qt,
     )
     from PyQt6.QtGui import (  # noqa: F401
         QColor, QFont, QIcon, QImage, QPainter, QPixmap, QStandardItem,
@@ -39,15 +36,12 @@ except ImportError:
         QNetworkAccessManager, QNetworkReply, QNetworkRequest,
     )
     from PyQt6.QtWidgets import (  # noqa: F401
-        QAbstractItemView, QApplication, QCheckBox, QComboBox, QCompleter, QDialog,
-        QFileDialog,
-        QDialogButtonBox, QDoubleSpinBox, QFormLayout, QGroupBox, QHBoxLayout,
+        QAbstractItemView, QCheckBox, QComboBox, QCompleter, QDialog, QDialogButtonBox,
+        QDoubleSpinBox, QFileDialog, QFormLayout, QHBoxLayout,
         QLabel, QLineEdit, QListWidget, QListWidgetItem, QMenu, QMessageBox,
         QPlainTextEdit, QProgressBar, QPushButton, QSlider, QSpinBox,
         QToolButton, QVBoxLayout, QWidget,
     )
-
-    QT_VERSION = 6
 
 
 def image_bytes(image):

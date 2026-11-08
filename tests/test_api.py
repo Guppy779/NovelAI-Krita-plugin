@@ -66,12 +66,12 @@ def test_params_version():
 
 
 def test_model_helpers():
-    assert api.model_family("nai-diffusion-4-5-full") == "4-5"
-    assert api.model_family("nai-diffusion-4-full") == "4"
-    assert api.model_family("nai-diffusion-3") == "3"
-    assert api.model_family("nai-diffusion-furry-3") == "3"
-    assert api.model_family("nai-diffusion-5-full") == "new"
-    assert api.is_v4("nai-diffusion-5-full") and not api.is_v4("nai-diffusion-3")
+    for model in ("nai-diffusion-5-full", "nai-diffusion-4-5-curated", "nai-diffusion-4-full",
+                  "nai-diffusion-4-curated-preview", "nai-diffusion-4-5-full-inpainting",
+                  "some-future-model"):
+        assert api.is_v4(model), model
+    for model in ("nai-diffusion-3", "nai-diffusion-furry-3", "nai-diffusion-3-inpainting"):
+        assert not api.is_v4(model), model
     assert api.inpainting_model("nai-diffusion-4-5-full") == "nai-diffusion-4-5-full-inpainting"
     assert api.inpainting_model("nai-diffusion-4-curated-preview") == "nai-diffusion-4-curated-inpainting"
     assert api.inpainting_model("nai-diffusion-3-inpainting") == "nai-diffusion-3-inpainting"
@@ -166,24 +166,26 @@ def test_error_message():
     assert "Insufficient" in api.error_message(402, body)
     assert "HTTP 418" in api.error_message(418, b"")
     assert api.error_message(500, b"<html>oops</html>").endswith("<html>oops</html>")
+    assert api.error_message(400, b'{"message": 42}').endswith(": 42")  # Not text.
+    assert api.error_message(400, b'{"message": null}') == "NovelAI rejected the request"
 
 
 # Same shape as a real /user/subscription response (only these fields shown).
 SUBSCRIPTION = {
     "tier": 3, "active": True,
-    "trainingStepsLeft": {"fixedTrainingStepsLeft": 5748, "purchasedTrainingSteps": 9693},
-    "usage": {"percent": 99, "purchasedPercent": 0, "isNegative": False, "timeUntilNextPercent": 6048},
+    "trainingStepsLeft": {"fixedTrainingStepsLeft": 8000, "purchasedTrainingSteps": 4500},
+    "usage": {"percent": 85, "purchasedPercent": 0, "isNegative": False, "timeUntilNextPercent": 6048},
 }
 
 
 def test_parse_account():
     account = api.parse_account(json.dumps(SUBSCRIPTION).encode())
     assert account.is_opus and account.plan_name == "Opus"
-    assert account.anlas == 15441
-    assert (account.v5_percent, account.v5_refill_seconds, account.v5_unavailable) == (99, 6048, False)
-    assert api.account_summary(account) == "Opus · 15,441 Anlas · V5 99%"
+    assert account.anlas == 12500
+    assert (account.v5_percent, account.v5_refill_seconds, account.v5_unavailable) == (85, 6048, False)
+    assert api.account_summary(account) == "Opus · 12,500 Anlas · V5 85%"
     details = api.account_details(account)
-    assert "5,748 from the plan, 9,693 purchased" in details and "Next +1% in 1h 40m" in details
+    assert "8,000 from the plan, 4,500 purchased" in details and "Next +1% in 1h 40m" in details
 
 
 def test_parse_account_edge_cases():

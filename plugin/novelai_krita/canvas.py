@@ -9,9 +9,17 @@ from krita import Krita
 from . import api
 from .qt import QBuffer, QByteArray, QColor, QIODevice, QImage, QPainter, Qt, image_bytes
 
-# Lookup table that turns any partially selected pixel into fully selected,
-# so feathered selection edges are regenerated (and blended back softly).
+# Lookup table that turns every non-black mask pixel white, e.g. so that
+# partly selected (feathered) pixels are regenerated too.
 _BINARIZE = bytes([0] + [255] * 255)
+
+
+def _binarize(image: QImage) -> QImage:
+    """A pure black and white 8-bit grayscale copy of ``image``."""
+    gray = image.convertToFormat(QImage.Format.Format_Grayscale8)
+    data = image_bytes(gray).translate(_BINARIZE)
+    return QImage(data, gray.width(), gray.height(), gray.bytesPerLine(),
+                  QImage.Format.Format_Grayscale8).copy()
 
 
 @dataclass
@@ -87,11 +95,7 @@ def api_mask(region: Region, width: int, height: int) -> QImage:
     regenerated if any part of it is selected, and edges stay hard (no
     smoothing when scaling up).
     """
-    cells_w, cells_h = width // MASK_GRID, height // MASK_GRID
-    cells = resize(region.mask, cells_w, cells_h).convertToFormat(QImage.Format.Format_Grayscale8)
-    data = image_bytes(cells).translate(_BINARIZE)
-    cells = QImage(data, cells_w, cells_h, cells.bytesPerLine(),
-                   QImage.Format.Format_Grayscale8).copy()
+    cells = _binarize(resize(region.mask, width // MASK_GRID, height // MASK_GRID))
     return cells.scaled(width, height, Qt.AspectRatioMode.IgnoreAspectRatio,
                         Qt.TransformationMode.FastTransformation)
 
@@ -126,10 +130,7 @@ def changed_pixels(result: QImage, sent: QImage) -> QImage:
     data = image_bytes(a).translate(table)
     flags = QImage(data, a.width(), a.height(), a.bytesPerLine(),
                    QImage.Format.Format_RGB32).copy()
-    gray = flags.convertToFormat(QImage.Format.Format_Grayscale8)
-    data = image_bytes(gray).translate(_BINARIZE)
-    return QImage(data, gray.width(), gray.height(), gray.bytesPerLine(),
-                  QImage.Format.Format_Grayscale8).copy()
+    return _binarize(flags)
 
 
 def _apply_alpha(image: QImage, mask: QImage) -> None:
@@ -152,7 +153,7 @@ def compose_result(result: QImage, region: Region, sent: Optional[QImage] = None
     """
     if region.mask is not None and sent is not None:
         # Scaling only happens when the area was too big to send 1:1.
-        mask = _map_binarize(resize(changed_pixels(result, sent), region.width, region.height))
+        mask = _binarize(resize(changed_pixels(result, sent), region.width, region.height))
     else:
         mask = region.mask
     image = resize(result, region.width, region.height)
@@ -160,13 +161,6 @@ def compose_result(result: QImage, region: Region, sent: Optional[QImage] = None
     if mask is not None:
         _apply_alpha(image, mask)
     return image.convertToFormat(QImage.Format.Format_ARGB32)
-
-
-def _map_binarize(mask: QImage) -> QImage:
-    gray = mask.convertToFormat(QImage.Format.Format_Grayscale8)
-    data = image_bytes(gray).translate(_BINARIZE)
-    return QImage(data, gray.width(), gray.height(), gray.bytesPerLine(),
-                  QImage.Format.Format_Grayscale8).copy()
 
 
 def insert_layer(doc, image: QImage, x: int, y: int, name: str, visible: bool = True):

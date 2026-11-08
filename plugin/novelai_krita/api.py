@@ -11,7 +11,7 @@ import math
 import random
 import urllib.parse
 import zipfile
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import List, Optional, Tuple
 
 from . import presets
@@ -89,24 +89,13 @@ SIZE_MULTIPLE = 64
 MAX_SIDE = 2048
 
 
-def model_family(model: str) -> str:
-    """Return "3", "4", "4-5" or "new" for a model API name.
-
-    Unknown names (e.g. nai-diffusion-5-full, which the server recognises
-    but which is not in MODELS yet) are treated as newer than V4.5.
-    """
-    if "diffusion-4-5" in model:
-        return "4-5"
-    if "diffusion-4" in model:
-        return "4"
-    if "diffusion-3" in model or "furry-3" in model:
-        return "3"
-    return "new"
-
-
 def is_v4(model: str) -> bool:
-    """True for models that take the V4-style prompt structure (V4 and later)."""
-    return model_family(model) != "3"
+    """True for models that take the V4-style prompt structure (V4 and later).
+
+    Names the plugin doesn't know (typed into the model box) are treated as
+    newer models, since new NovelAI models keep the V4 structure.
+    """
+    return presets.model_key(model) not in ("3", "furry-3")
 
 
 def inpainting_model(model: str) -> str:
@@ -236,7 +225,6 @@ class GenerationParams:
     mask: Optional[str] = None
     strength: float = 0.7
     noise: float = 0.0
-    extra: dict = field(default_factory=dict)
 
     @property
     def action(self) -> str:
@@ -320,7 +308,6 @@ def build_payload(p: GenerationParams) -> dict:
             if p.strength < 1.0:
                 params["img2img"] = {"strength": float(p.strength), "color_correct": True}
 
-    params.update(p.extra)
     return {"input": prompt, "model": model, "action": action, "parameters": params}
 
 
@@ -342,11 +329,11 @@ def parse_images(body: bytes) -> List[Tuple[bytes, Optional[int]]]:
 
 def error_message(status: int, body: bytes) -> str:
     """Turn an error response into a message suitable for the user."""
-    detail = ""
     try:
         detail = json.loads(body.decode("utf-8")).get("message", "")
     except (ValueError, UnicodeDecodeError, AttributeError):
         detail = body[:200].decode("utf-8", "replace").strip() if body else ""
+    detail = str(detail or "")  # The message isn't always text.
     hints = {
         400: "NovelAI rejected the request",
         401: "Your API token is missing, invalid or expired",
@@ -431,7 +418,7 @@ def format_duration(seconds: int) -> str:
 
 
 def v5_allowance_text(account: Account) -> str:
-    """e.g. "V5 99%", or "" when the account has no V5 allowance info."""
+    """e.g. "V5 85%", or "" when the account has no V5 allowance info."""
     if account.v5_unavailable:
         return "V5 used up"
     if account.v5_percent is None:
@@ -443,7 +430,7 @@ def v5_allowance_text(account: Account) -> str:
 
 
 def account_summary(account: Account) -> str:
-    """One line for the panel, e.g. "Opus · 15,441 Anlas · V5 99%"."""
+    """One line for the panel, e.g. "Opus · 12,500 Anlas · V5 85%"."""
     parts = [account.plan_name]
     if account.anlas is not None:
         parts.append("{:,} Anlas".format(account.anlas))
@@ -583,14 +570,15 @@ class SSEParser:
             return None
         try:
             obj = json.loads("\n".join(data))
-        except ValueError:
+            if not isinstance(obj, dict):
+                return None
+            image = obj.get("image")
+            return StreamEvent(
+                kind=obj.get("event_type") or name,
+                sample=int(obj.get("samp_ix") or 0),
+                step=int(obj.get("step_ix") or 0),
+                image=base64.b64decode(image) if isinstance(image, str) else b"",
+                message=str(obj.get("message") or obj.get("code") or ""),
+            )
+        except (ValueError, TypeError):  # Bad JSON, numbers or base64: skip the event.
             return None
-        kind = obj.get("event_type") or name
-        image = obj.get("image")
-        return StreamEvent(
-            kind=kind,
-            sample=int(obj.get("samp_ix") or 0),
-            step=int(obj.get("step_ix") or 0),
-            image=base64.b64decode(image) if isinstance(image, str) else b"",
-            message=str(obj.get("message") or obj.get("code") or ""),
-        )

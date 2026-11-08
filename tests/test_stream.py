@@ -59,6 +59,13 @@ def test_garbage_is_ignored():
     assert events == []
 
 
+def test_valid_json_of_the_wrong_shape_is_ignored():
+    data = (b'data: [1, 2]\n\ndata: "text"\n\n'
+            b'data: {"event_type": "final", "samp_ix": "x"}\n\n'
+            b'data: {"event_type": "final", "image": "not base64!"}\n\n')
+    assert api.SSEParser().feed(data) == []
+
+
 def test_supports_streaming():
     assert api.supports_streaming("nai-diffusion-4-5-full")
     assert api.supports_streaming("nai-diffusion-5-full")

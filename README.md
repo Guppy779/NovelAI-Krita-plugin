@@ -50,7 +50,7 @@ tick **NovelAI Image Generation**, and restart Krita again.
 2. In the NovelAI panel, click **Settings**, paste the token, and click **Test**. The test
    shows your plan and Anlas.
 3. Click **OK**. The line under the model box now shows your account, for example
-   *Opus · 15,441 Anlas · V5 99%*.
+   *Opus · 12,500 Anlas · V5 85%*.
 
 ### Update or uninstall
 

@@ -13,7 +13,7 @@ from .settings_dialog import SettingsDialog, max_pixels
 from .qt import (
     QAbstractItemView, QCheckBox, QComboBox, QDoubleSpinBox, QFileDialog, QFormLayout,
     QHBoxLayout, QIcon, QImage, QLabel, QLineEdit, QListWidget, QListWidgetItem,
-    QMenu, QMessageBox, QPixmap, QPlainTextEdit, QProgressBar, QPushButton, QSize, QSlider,
+    QMenu, QMessageBox, QPixmap, QProgressBar, QPushButton, QSize, QSlider,
     QSpinBox, Qt, QTimer, QToolButton, QVBoxLayout, QWidget,
 )
 
@@ -85,7 +85,7 @@ class NovelAIDocker(DockWidget):
         self.prompt.setPlaceholderText("Prompt, e.g. 1girl, silver hair, night sky, city lights")
         self.prompt.setMinimumHeight(70)
         layout.addWidget(self.prompt, 2)
-        self.negative = PromptEdit(settings.negative_prompt(), self._suggest_tags)
+        self.negative = PromptEdit(settings.get("negative_prompt"), self._suggest_tags)
         self.negative.setPlaceholderText("Undesired content (added after the preset)")
         self.negative.setMinimumHeight(40)
         layout.addWidget(self.negative, 1)
@@ -105,6 +105,12 @@ class NovelAIDocker(DockWidget):
         form.addRow("Quality tags", self.quality)
         form.addRow("Undesired preset", self.uc_preset)
         layout.addLayout(form)
+        # The user's own choices. A model without them shows the nearest option
+        # without forgetting them (e.g. while a model name is being typed).
+        self._quality_choice = settings.get("quality_tags")
+        self._uc_choice = settings.get("uc_preset")
+        self.quality.activated.connect(self._quality_chosen)
+        self.uc_preset.activated.connect(self._uc_chosen)
         self._refresh_presets()
         self.model.currentIndexChanged.connect(self._refresh_presets)
         self.model.editTextChanged.connect(self._refresh_presets)
@@ -193,7 +199,6 @@ class NovelAIDocker(DockWidget):
         form.addRow("Images", self.n_samples)
         self.steps.valueChanged.connect(self._update_mode)
         self.n_samples.valueChanged.connect(self._update_mode)
-
 
         layout.addWidget(self.advanced)
         self.advanced_toggle.toggled.connect(self._toggle_advanced)
@@ -288,9 +293,7 @@ class NovelAIDocker(DockWidget):
             combo.setCurrentIndex(index)
 
     def _set_model(self, name):
-        name = (name or "").strip()
-        if name in ("", "None"):  # "None" was saved by an earlier bug.
-            name = api.DEFAULT_MODEL
+        name = (name or "").strip() or api.DEFAULT_MODEL
         index = self.model.findData(name)
         if index >= 0:
             self.model.setCurrentIndex(index)
@@ -307,19 +310,23 @@ class NovelAIDocker(DockWidget):
                 return data
         return text
 
+    def _quality_chosen(self, *_):
+        self._quality_choice = self.quality.currentData()
+
+    def _uc_chosen(self, *_):
+        self._uc_choice = self.uc_preset.currentText()
+
     def _refresh_presets(self, *_):
         """Fill the Quality tags and Undesired preset boxes for the current
-        model, keeping the current choices where the model has them."""
+        model, showing the user's choices where the model has them."""
         model = self._model_name()
-        quality = self.quality.currentData() if self.quality.count() else settings.quality()
-        preset = self.uc_preset.currentText() if self.uc_preset.count() else settings.get("uc_preset")
 
         self.quality.blockSignals(True)
         self.quality.clear()
         for value, label in presets.quality_options(model):
             self.quality.addItem(label, value)
-        index = self.quality.findData(quality)
-        if index < 0 and quality == presets.LIGHT:  # Light is V5 only.
+        index = self.quality.findData(self._quality_choice)
+        if index < 0 and self._quality_choice == presets.LIGHT:  # Light is V5 only.
             index = self.quality.findData(presets.STANDARD)
         self.quality.setCurrentIndex(max(0, index))
         self.quality.blockSignals(False)
@@ -328,7 +335,7 @@ class NovelAIDocker(DockWidget):
         self.uc_preset.clear()
         names = presets.uc_options(model)
         self.uc_preset.addItems(names)
-        for choice in (preset, presets.DEFAULT_UC_PRESET, presets.NONE):
+        for choice in (self._uc_choice, presets.DEFAULT_UC_PRESET, presets.NONE):
             if choice in names:
                 self.uc_preset.setCurrentIndex(names.index(choice))
                 break
@@ -398,8 +405,8 @@ class NovelAIDocker(DockWidget):
         settings.set("seed", self.seed.text().strip() or "0")
         settings.set("random_seed", self.random_seed.isChecked())
         settings.set("n_samples", self.n_samples.value())
-        settings.set("quality_tags", self.quality.currentData())
-        settings.set("uc_preset", self.uc_preset.currentText())
+        settings.set("quality_tags", self._quality_choice)
+        settings.set("uc_preset", self._uc_choice)
         settings.set("show_advanced", self.advanced_toggle.isChecked())
 
     def open_settings(self):

@@ -47,6 +47,22 @@ the cursor (free, no Anlas). Use Up/Down to choose, <b>Tab</b> or <b>Enter</b>
 to insert, <b>Escape</b> to close. Italic suggestions are fuzzy matches.
 Typing Japanese (e.g. 銀髪) suggests the English tag. It can be turned off in
 Settings.</p>
+<h4>Import from an image</h4>
+<p>Drop an image made with NovelAI onto either prompt box to reuse how it was made.
+A dialog shows what the image contains; tick what to import: the <b>prompt</b>,
+<b>undesired content</b>, <b>characters</b>, <b>settings</b> (steps, prompt guidance,
+guidance rescale, sampler, noise schedule) and <b>seed</b>. The model is not changed.</p>
+<ul>
+  <li>The plugin has no character prompts yet, so character prompts are added to
+      the end of the prompt (and their undesired content to the undesired content).</li>
+  <li><b>Move quality tags and preset into their boxes</b> takes NovelAI's quality
+      tags and Undesired Content preset out of the imported text and chooses them in
+      the Quality tags and Undesired preset boxes. Turned off, the text is imported
+      as recorded and both boxes are turned off. Either way the request is the same.</li>
+</ul>
+<p>The prompt is read from the PNG's text, or from the copy NovelAI hides in the
+image's transparency, which survives some programs that remove the text. JPEGs
+and images re-saved by most websites have neither.</p>
 <h4>Modes</h4>
 <p>The mode depends on the <b>Strength</b> slider and whether something is selected:</p>
 <ul>

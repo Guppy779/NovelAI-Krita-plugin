@@ -4,7 +4,12 @@ While typing, the tag under the cursor is looked up (after a short pause)
 and suggestions appear in a popup. Up/Down choose, Tab or Enter insert,
 Escape closes. Suggestions are fetched through a ``suggest`` callback so
 this widget knows nothing about tokens or models.
+
+Image files dropped on the box go to an ``on_image`` callback (to import
+their prompt) instead of being inserted as text.
 """
+
+import os
 
 from . import api
 from .qt import (
@@ -21,12 +26,17 @@ _COMPLETER_KEYS = _ACCEPT_KEYS + (Qt.Key.Key_Escape, Qt.Key.Key_Backtab)
 _HIDE_KEYS = (Qt.Key.Key_Left, Qt.Key.Key_Right, Qt.Key.Key_Home, Qt.Key.Key_End)
 
 
+IMAGE_EXTENSIONS = (".png", ".webp", ".jpg", ".jpeg")
+
+
 class PromptEdit(QPlainTextEdit):
-    def __init__(self, text="", suggest=None, parent=None):
+    def __init__(self, text="", suggest=None, parent=None, on_image=None):
         """``suggest(query, lang, on_results)`` starts a lookup and returns a
-        job with ``cancel()``, or None when suggestions are unavailable."""
+        job with ``cancel()``, or None when suggestions are unavailable.
+        ``on_image(path)`` is called with an image file dropped on the box."""
         super().__init__(text, parent)
         self._suggest = suggest
+        self._on_image = on_image
         self._job = None
         self._context = None
 
@@ -90,6 +100,41 @@ class PromptEdit(QPlainTextEdit):
         super().inputMethodEvent(event)
         if event.commitString():
             self._timer.start()
+
+    # ---- Dropped images ---------------------------------------------------
+
+    def _dropped_image(self, event):
+        """The path of the image file being dragged, or None."""
+        mime = event.mimeData()
+        if self._on_image is None or not mime.hasUrls():
+            return None
+        for url in mime.urls():
+            path = url.toLocalFile() if url.isLocalFile() else ""
+            if os.path.splitext(path)[1].lower() in IMAGE_EXTENSIONS:
+                return path
+        return None
+
+    def dragEnterEvent(self, event):
+        if self._dropped_image(event):
+            event.acceptProposedAction()
+        else:
+            super().dragEnterEvent(event)
+
+    def dragMoveEvent(self, event):
+        if self._dropped_image(event):
+            event.acceptProposedAction()
+        else:
+            super().dragMoveEvent(event)
+
+    def dropEvent(self, event):
+        path = self._dropped_image(event)
+        if not path:
+            super().dropEvent(event)
+            return
+        event.acceptProposedAction()
+        # Open the import dialog after the drop has finished, not inside it
+        # (the system's drag and drop is still running during this event).
+        QTimer.singleShot(0, lambda: self._on_image(path))
 
     def focusOutEvent(self, event):
         # The popup takes focus while open; only hide for other widgets.

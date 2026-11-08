@@ -6,8 +6,9 @@ from dataclasses import dataclass
 
 from krita import DockWidget
 
-from . import api, canvas, doc_state, presets, settings
+from . import api, canvas, doc_state, metadata, presets, settings
 from .client import NovelAIClient
+from .import_dialog import ImportDialog, LABELS as IMPORT_LABELS, read_image
 from .prompt_edit import PromptEdit
 from .settings_dialog import SettingsDialog, max_pixels
 from .qt import (
@@ -85,11 +86,13 @@ class NovelAIDocker(DockWidget):
         layout.addLayout(row)
 
         # Prompts.
-        self.prompt = PromptEdit("", self._suggest_tags)
-        self.prompt.setPlaceholderText("Prompt, e.g. 1girl, silver hair, night sky, city lights")
+        self.prompt = PromptEdit("", self._suggest_tags, on_image=self.import_image)
+        self.prompt.setPlaceholderText(
+            "Prompt, e.g. 1girl, silver hair, night sky, city lights\n"
+            "Drop a NovelAI image here to import its prompt and settings.")
         self.prompt.setMinimumHeight(70)
         layout.addWidget(self.prompt, 2)
-        self.negative = PromptEdit("", self._suggest_tags)
+        self.negative = PromptEdit("", self._suggest_tags, on_image=self.import_image)
         self.negative.setPlaceholderText("Undesired content (added after the preset)")
         self.negative.setMinimumHeight(40)
         layout.addWidget(self.negative, 1)
@@ -512,6 +515,34 @@ class NovelAIDocker(DockWidget):
             if key not in doc_state.PROMPTS:
                 settings.set(key, value)
         settings.set("show_advanced", self.advanced_toggle.isChecked())
+
+    def import_image(self, path):
+        """Import the prompt and settings recorded in a NovelAI image."""
+        name = os.path.basename(path)
+        try:
+            info, image = read_image(path)
+        except OSError as exc:
+            self.status.setText("Could not read %s: %s." % (name, exc.strerror or exc))
+            return
+        if info is None:
+            self.status.setText(
+                "%s has no NovelAI prompt or settings in it. Images re-saved by other "
+                "programs or websites often lose them." % name)
+            return
+        dialog = ImportDialog(info, image, name, self)
+        if not dialog.exec():
+            return
+        parts = dialog.parts()
+        self._follow_document()  # Import into the active document's settings.
+        self._apply_state(metadata.import_state(
+            info, self._panel_state(), parts, dialog.clean.isChecked()))
+        self._state_changed()  # _apply_state doesn't store them; this does.
+        if metadata.SETTINGS in parts or metadata.SEED in parts:
+            self.advanced_toggle.setChecked(True)  # Show what changed.
+        imported = [IMPORT_LABELS[part].split(" (")[0].lower() for part in parts]
+        if len(imported) > 1:
+            imported[-2:] = ["%s and %s" % (imported[-2], imported[-1])]
+        self.status.setText("Imported the %s from %s." % (", ".join(imported), name))
 
     def open_settings(self):
         SettingsDialog(self._client, self).exec()

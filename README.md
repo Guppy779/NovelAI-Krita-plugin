@@ -19,6 +19,8 @@ or Anlatan.
   English tags.
 - **Quality tags and Undesired Content presets** for each model, applied the way the site
   applies them.
+- **Import from an image**: drop a NovelAI image on a prompt box to reuse its prompt,
+  undesired content, characters, settings or seed.
 - **Your account at a glance**: your plan, Anlas and remaining V5 allowance.
 - **A warning before you spend Anlas**, with the reason it would cost.
 - **A history of results**, from which you can re-add, save, or reuse a result's seed or prompt.
@@ -118,6 +120,31 @@ Select the area to change with any selection tool, set Strength, and click Gener
 - **Advanced options** has steps, prompt guidance, guidance rescale, sampler, noise schedule,
   seed and the number of images. Untick **Random** to keep a fixed seed.
 
+### Import from an image
+
+Drag an image made with NovelAI from your file browser onto either prompt box. A dialog
+shows what the image contains. Tick what to import, then click **Import**:
+
+| Part | What it sets |
+|------|--------------|
+| Prompt | The prompt box |
+| Undesired content | The undesired content box |
+| Characters | Character prompts. The plugin has no character prompts yet, so they're added to the end of the prompt, and their undesired content to the undesired content. |
+| Settings | Steps, prompt guidance, guidance rescale, sampler and noise schedule |
+| Seed | The seed, with **Random** turned off |
+
+The model isn't changed. The dialog remembers your choices.
+
+NovelAI records the prompt as it was sent, with the quality tags at the end and the
+Undesired Content preset at the start. **Move quality tags and preset into their boxes**
+takes them out of the text and chooses them in the **Quality tags** and **Undesired
+preset** boxes instead. With it off, the text is imported as recorded and both boxes are
+turned off. Either way, generating sends the same request.
+
+NovelAI stores the prompt in the PNG's text and again, hidden, in the image's
+transparency. The hidden copy survives some programs that remove the text. JPEGs and
+images re-saved by most websites have neither, so there's nothing to import from them.
+
 ### Anlas
 
 The account line updates after every generation. Click **Refresh** to check it again, or
@@ -172,6 +199,7 @@ Click **Settings** in the panel:
 - The plugin talks only to `image.novelai.net`. It sends your prompts, and when you refine or
   inpaint, the part of the canvas being worked on.
 - The plugin does not save results to disk on its own. Only **Save image…** writes a file.
+- **Import from an image** reads the image on your computer. Nothing from it is sent anywhere.
 
 ## Troubleshooting
 
@@ -208,6 +236,8 @@ plugin/
     canvas.py               Reading the canvas/selection, inserting layers
     docker.py               The docker UI
     doc_state.py            Per-document settings stored in the .kra (plain Python, tested)
+    metadata.py             Reading NovelAI's prompt and settings from images (plain Python, tested)
+    import_dialog.py        The Import from image dialog
     prompt_edit.py          Prompt box with tag autocomplete popup
     tags.py                 Finding the tag at the cursor (plain Python, tested)
     presets.py              Quality tags and Undesired Content presets (plain Python, tested)

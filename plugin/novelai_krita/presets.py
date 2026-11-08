@@ -162,7 +162,8 @@ def uc_options(model: str) -> List[str]:
     return [name for name, _ in UC_PRESETS.get(model_key(model), [])] + [NONE]
 
 
-def _join(first: str, second: str) -> str:
+def join_tags(first: str, second: str) -> str:
+    """Join two comma-separated tag lists, either of which may be empty."""
     first, second = first.strip(), second.strip()
     if not first or not second:
         return first or second
@@ -180,8 +181,8 @@ def apply_uc(model: str, prompt: str, undesired: str, preset: str) -> Tuple[str,
     names = [name for name, _ in presets]
     text = dict(presets).get(preset, "")
     index = names.index(preset) if preset in names else len(names)
-    negative = _join(text, undesired)
+    negative = join_tags(text, undesired)
     if (model_key(model) is not None and not is_curated(model)
             and "nsfw" not in prompt.lower() and "nsfw" not in negative.lower()):
-        negative = _join("nsfw,", negative) if negative else "nsfw"
+        negative = join_tags("nsfw,", negative) if negative else "nsfw"
     return negative, index

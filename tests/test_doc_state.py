@@ -31,3 +31,28 @@ def test_wrong_types_are_ignored():
 def test_unreadable_data_gives_nothing():
     for data in (b"", b"not json", b"[1, 2]", b'"text"', b"\xff\xfe", b"null"):
         assert doc_state.decode(data) == {}, data
+
+
+def test_characters_round_trip():
+    characters = [{"prompt": "girl, red hair", "negative": "blue hair", "x": 0.1, "y": 0.9,
+                   "enabled": True},
+                  {"prompt": "boy", "negative": "", "x": 0.5, "y": 0.5, "enabled": False}]
+    state = dict(STATE, characters=characters, character_positions=True)
+    assert doc_state.decode(doc_state.encode(state)) == state
+
+
+def test_damaged_characters_are_repaired_or_dropped():
+    stored = {"characters": [
+        {"prompt": "girl"},  # Missing fields: defaults.
+        {"prompt": "boy", "negative": 3, "x": 1.5, "y": True, "enabled": "yes"},
+        {"negative": "no prompt"}, "text", None,
+    ], "character_positions": "on"}
+    assert doc_state.decode(json.dumps(stored).encode()) == {"characters": [
+        {"prompt": "girl", "negative": "", "x": 0.5, "y": 0.5, "enabled": True},
+        {"prompt": "boy", "negative": "", "x": 0.5, "y": 0.5, "enabled": True},
+    ]}
+    assert doc_state.decode(json.dumps({"characters": "girl"}).encode()) == {}
+
+
+def test_characters_are_not_remembered_for_new_documents():
+    assert "characters" in doc_state.PROMPTS

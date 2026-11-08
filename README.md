@@ -19,6 +19,8 @@ or Anlatan.
   English tags.
 - **Quality tags and Undesired Content presets** for each model, applied the way the site
   applies them.
+- **Character prompts** (V4 and newer): a prompt and undesired content for each character,
+  placed where the AI chooses or at positions you pick.
 - **Import from an image**: drop a NovelAI image on a prompt box to reuse its prompt,
   undesired content, characters, settings or seed.
 - **Your account at a glance**: your plan, Anlas and remaining V5 allowance.
@@ -71,8 +73,8 @@ tick **NovelAI Image Generation**, and restart Krita again.
 
 ### Settings per document
 
-Each document keeps its own prompt, undesired content and generation settings (model,
-presets, strength, steps, sampler, seed and so on). Switching to another document switches
+Each document keeps its own prompt, undesired content, characters and generation settings
+(model, presets, strength, steps, sampler, seed and so on). Switching to another document switches
 the panel to that document's settings.
 
 - They're saved inside the `.kra` file, so reopening it brings them back. Saving as PNG or
@@ -120,6 +122,48 @@ Select the area to change with any selection tool, set Strength, and click Gener
 - **Advanced options** has steps, prompt guidance, guidance rescale, sampler, noise schedule,
   seed and the number of images. Untick **Random** to keep a fixed seed.
 
+### Characters
+
+With V4 and newer models, each character in the image can have its own prompt, so that
+traits don't leak from one character to another. See NovelAI's guide to
+[multiple characters](https://docs.novelai.net/en/image/multiplecharacters).
+
+1. Put the scene, the style and the number of characters in the main prompt, for example
+   `2girls, autumn park, sitting on bench`.
+2. Click **+ Add** under the undesired content box for each character, and describe each
+   one with `girl`, `boy` or `other` and no number, for example `girl, red hair, smile`.
+3. If a trait leaks onto a character anyway, add it to that character's undesired content.
+
+Each character has:
+
+- **A checkbox:** untick it to leave the character out without deleting it.
+- **Up and down arrows:** set the order. NovelAI tends to place characters in that order,
+  left to right.
+- **✕:** removes the character.
+
+**Positions:** the box next to **+ Add** switches between **AI's choice**, where NovelAI
+places the characters, and **Custom positions**. With custom positions, each character
+gets a position button. Click it to open a small canvas in the shape of the image, with a
+numbered dot for each character:
+
+- Drag any dot to place that character's centre. Clicking an empty spot moves the
+  highlighted character, the one whose button you clicked.
+- **V5** places characters anywhere. The button shows the position as percentages from the
+  left and top, for example **31%, 62%**.
+- **V4 and V4.5** only accept a 5 × 5 grid, so the dots snap to its cells. The button shows
+  the cell, for example **C3**: columns A to E from left to right, rows 1 to 5 from top to
+  bottom. A position placed freely on V5 is kept, and V4 and V4.5 use its nearest cell.
+- An unticked character's dot has a dashed outline.
+
+V4 and V4.5 take up to 6 characters, V5 up to 22. V3 models have no character prompts.
+If the model doesn't take the ticked characters, a note says why and Generate stops.
+
+Characters are part of the document's settings and are saved in the `.kra`. A new
+document starts without characters.
+
+You can also use `source#`, `target#` and `mutual#` in front of an action tag for
+interactions, for example `source#hug` in one character and `target#hug` in the other.
+
 ### Import from an image
 
 Drag an image made with NovelAI from your file browser onto either prompt box. A dialog
@@ -129,7 +173,7 @@ shows what the image contains. Tick what to import, then click **Import**:
 |------|--------------|
 | Prompt | The prompt box |
 | Undesired content | The undesired content box |
-| Characters | Character prompts. The plugin has no character prompts yet, so they're added to the end of the prompt, and their undesired content to the undesired content. |
+| Characters | The character prompts, with their positions. They replace your characters, or with **Add to the current characters**, come after them. An image with custom positions turns on **Custom positions**. |
 | Settings | Steps, prompt guidance, guidance rescale, sampler and noise schedule |
 | Seed | The seed, with **Random** turned off |
 
@@ -221,7 +265,6 @@ Bug reports and ideas are welcome in
 
 ## Roadmap
 
-- Multi-character prompts (V4 character captions and positions)
 - Vibe transfer and precise reference, once they work with V5
 - Director tools and upscaling
 
@@ -235,6 +278,7 @@ plugin/
     client.py               Async HTTP via QNetworkAccessManager
     canvas.py               Reading the canvas/selection, inserting layers
     docker.py               The docker UI
+    characters.py           The Characters section of the docker
     doc_state.py            Per-document settings stored in the .kra (plain Python, tested)
     metadata.py             Reading NovelAI's prompt and settings from images (plain Python, tested)
     import_dialog.py        The Import from image dialog

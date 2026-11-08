@@ -18,7 +18,7 @@ Undesired Content preset (and "nsfw") at the start of the undesired content.
 import json
 import struct
 import zlib
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from typing import Dict, List, Optional, Tuple
 
 from . import api, presets
@@ -126,27 +126,34 @@ def stealth_text(alpha: bytes, width: int, height: int, stride: int = 0) -> Dict
 
 
 @dataclass
-class Character:
-    prompt: str
-    negative: str = ""
-
-
-@dataclass
 class ImageInfo:
     """What a NovelAI image says about how it was made."""
 
     prompt: str = ""
     negative: str = ""
-    characters: List[Character] = field(default_factory=list)
+    characters: List[api.CharacterPrompt] = field(default_factory=list)
+    use_coords: Optional[bool] = None  # Characters placed at their positions.
     # Generation settings, by their doc_state names: steps, scale,
     # cfg_rescale, sampler and noise_schedule (only those it has valid values for).
     settings: Dict[str, object] = field(default_factory=dict)
     seed: Optional[int] = None
     model: str = ""  # e.g. "NovelAI Diffusion V5", for showing.
+    # "PromptGenerateRequest" for text to image, "Img2ImgRequest" for image
+    # to image, ...; "" if the image doesn't say.
+    request_type: str = ""
+
+    @property
+    def made_from_image(self) -> bool:
+        """True if the image was made from another image (image to image,
+        inpainting, ...): its prompt and settings alone don't recreate it."""
+        return self.request_type not in ("", TEXT_TO_IMAGE)
 
     @property
     def has_characters(self) -> bool:
-        return any(c.prompt.strip() or c.negative.strip() for c in self.characters)
+        return bool(self.characters)  # Empty ones are left out when parsing.
+
+
+TEXT_TO_IMAGE = "PromptGenerateRequest"
 
 
 def _number(value, low, high):
@@ -169,6 +176,15 @@ def _caption(value) -> Tuple[str, list]:
 def _character_text(item) -> str:
     text = item.get("char_caption") if isinstance(item, dict) else None
     return text if isinstance(text, str) else ""
+
+
+def _character_center(item) -> Tuple[float, float]:
+    centers = item.get("centers") if isinstance(item, dict) else None
+    center = centers[0] if isinstance(centers, list) and centers else None
+    if not isinstance(center, dict):
+        return 0.5, 0.5
+    x, y = _number(center.get("x"), 0.0, 1.0), _number(center.get("y"), 0.0, 1.0)
+    return (0.5 if x is None else float(x)), (0.5 if y is None else float(y))
 
 
 def parse(fields: Dict[str, str]) -> Optional[ImageInfo]:
@@ -199,7 +215,13 @@ def parse(fields: Dict[str, str]) -> Optional[ImageInfo]:
     info.negative = negative
     for index, item in enumerate(char_prompts):
         other = char_negatives[index] if index < len(char_negatives) else None
-        info.characters.append(Character(_character_text(item), _character_text(other)))
+        character = api.CharacterPrompt(_character_text(item), _character_text(other))
+        character.x, character.y = _character_center(item)
+        if character.prompt.strip() or character.negative.strip():
+            info.characters.append(character)
+    v4_prompt = comment.get("v4_prompt")
+    if isinstance(v4_prompt, dict) and isinstance(v4_prompt.get("use_coords"), bool):
+        info.use_coords = v4_prompt["use_coords"]
 
     steps = comment.get("steps")
     if isinstance(steps, int) and not isinstance(steps, bool) and 1 <= steps <= 50:
@@ -217,6 +239,8 @@ def parse(fields: Dict[str, str]) -> Optional[ImageInfo]:
     seed = comment.get("seed")
     if isinstance(seed, int) and not isinstance(seed, bool) and 0 <= seed <= api.MAX_SEED:
         info.seed = seed
+    if isinstance(comment.get("request_type"), str):
+        info.request_type = comment["request_type"]
     return info
 
 
@@ -267,13 +291,15 @@ PROMPT, NEGATIVE, CHARACTERS, SETTINGS, SEED = (
 PARTS = (PROMPT, NEGATIVE, CHARACTERS, SETTINGS, SEED)
 
 
-def import_state(info: ImageInfo, state: dict, parts, clean: bool = True) -> dict:
+def import_state(info: ImageInfo, state: dict, parts, clean: bool = True,
+                 append: bool = False) -> dict:
     """The panel state (see doc_state.FIELDS) after importing ``parts`` of ``info``.
 
     ``clean`` moves NovelAI's quality tags and Undesired Content preset out of
     the text into their boxes; otherwise the text is kept as recorded and the
-    boxes are turned off. Either way the request stays the same. The plugin
-    has no character prompts yet, so characters are added to the prompts.
+    boxes are turned off. Either way the request stays the same.
+    ``append`` adds the image's characters after the current ones instead of
+    replacing them.
     """
     state = dict(state)
     if PROMPT in parts:
@@ -283,10 +309,11 @@ def import_state(info: ImageInfo, state: dict, parts, clean: bool = True) -> dic
         negative, preset = split_uc(info.negative) if clean else (info.negative, presets.NONE)
         state["negative_prompt"], state["uc_preset"] = negative, preset
     if CHARACTERS in parts:
-        for character in info.characters:
-            state["prompt"] = presets.join_tags(state["prompt"], character.prompt)
-            state["negative_prompt"] = presets.join_tags(
-                state["negative_prompt"], character.negative)
+        imported = [asdict(character) for character in info.characters]
+        state["characters"] = (list(state.get("characters") or []) + imported
+                               if append else imported)
+        if info.use_coords or (info.use_coords is not None and not append):
+            state["character_positions"] = info.use_coords
     if SETTINGS in parts:
         state.update(info.settings)
     if SEED in parts and info.seed is not None:

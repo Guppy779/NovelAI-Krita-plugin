@@ -7,14 +7,15 @@ from dataclasses import dataclass
 from krita import DockWidget
 
 from . import api, canvas, doc_state, metadata, presets, settings
+from .characters import CharacterEditor
 from .client import NovelAIClient
 from .import_dialog import ImportDialog, LABELS as IMPORT_LABELS, read_image
 from .prompt_edit import PromptEdit
 from .settings_dialog import SettingsDialog, max_pixels
 from .qt import (
     QAbstractItemView, QCheckBox, QComboBox, QDoubleSpinBox, QFileDialog, QFormLayout,
-    QHBoxLayout, QIcon, QImage, QLabel, QLineEdit, QListWidget, QListWidgetItem,
-    QMenu, QMessageBox, QPixmap, QProgressBar, QPushButton, QSize, QSlider,
+    QFrame, QHBoxLayout, QIcon, QImage, QLabel, QLineEdit, QListWidget, QListWidgetItem,
+    QMenu, QMessageBox, QPixmap, QProgressBar, QPushButton, QScrollArea, QSize, QSlider,
     QSpinBox, Qt, QTimer, QToolButton, QVBoxLayout, QWidget,
 )
 
@@ -30,6 +31,19 @@ class Result:
     prompt: str
     document: object
     original: bytes = b""  # The file exactly as NovelAI sent it.
+
+
+class _Panel(QWidget):
+    """The panel's contents, inside a scroll area.
+
+    The word-wrapped labels make Qt size the contents to their preferred
+    height, which would scroll even when everything fits by shrinking the
+    prompt boxes. Reporting the minimum instead fills the docker's height and
+    scrolls only when the docker is shorter than the panel's minimum.
+    """
+
+    def heightForWidth(self, width):
+        return self.minimumSizeHint().height()
 
 
 class NovelAIDocker(DockWidget):
@@ -48,7 +62,7 @@ class NovelAIDocker(DockWidget):
         self._loading = False  # Filling the panel from a document's settings.
         self._edited_without_doc = False
 
-        root = QWidget(self)
+        root = _Panel(self)
         layout = QVBoxLayout(root)
         layout.setContentsMargins(4, 4, 4, 4)
 
@@ -96,6 +110,11 @@ class NovelAIDocker(DockWidget):
         self.negative.setPlaceholderText("Undesired content (added after the preset)")
         self.negative.setMinimumHeight(40)
         layout.addWidget(self.negative, 1)
+
+        # Character prompts (V4 and newer).
+        self.characters = CharacterEditor(self._suggest_tags, self.import_image, self._state_changed)
+        self.characters.set_custom_positions(settings.get_bool("character_positions"))
+        layout.addWidget(self.characters)
 
         # Quality tags and Undesired Content preset, as on the NovelAI site:
         # added to the request, not shown in the boxes. Choices depend on the model.
@@ -249,7 +268,13 @@ class NovelAIDocker(DockWidget):
         self.history.setMinimumHeight(THUMBNAIL_SIZE + 16)
         layout.addWidget(self.history, 2)
 
-        self.setWidget(root)
+        # The panel scrolls when the docker is too short for it (e.g. with
+        # several characters).
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setWidget(root)
+        self.setWidget(scroll)
 
         for signal in (
                 self.prompt.textChanged, self.negative.textChanged,
@@ -338,6 +363,7 @@ class NovelAIDocker(DockWidget):
         """Fill the Quality tags and Undesired preset boxes for the current
         model, showing the user's choices where the model has them."""
         model = self._model_name()
+        self.characters.set_model(model)
 
         self.quality.blockSignals(True)
         self.quality.clear()
@@ -400,6 +426,8 @@ class NovelAIDocker(DockWidget):
                 doc, settings.get_int("context_padding"), max_pixels())
             width, height = self._generation_size(
                 w, h, self.strength.value() < 100 or selected)
+            # Character positions are placed on a canvas of the same shape.
+            self.characters.set_aspect(width, height)
             reasons = api.anlas_warnings(
                 width, height, self.steps.value(), self.n_samples.value(),
                 self._model_name(), self._account)
@@ -430,6 +458,8 @@ class NovelAIDocker(DockWidget):
             "seed": self.seed.text().strip() or "0",
             "random_seed": self.random_seed.isChecked(),
             "n_samples": self.n_samples.value(),
+            "characters": self.characters.characters(),
+            "character_positions": self.characters.custom_positions(),
         }
 
     @staticmethod
@@ -451,6 +481,8 @@ class NovelAIDocker(DockWidget):
             "seed": settings.get("seed"),
             "random_seed": settings.get_bool("random_seed"),
             "n_samples": settings.get_int("n_samples"),
+            "characters": [],
+            "character_positions": settings.get_bool("character_positions"),
         }
 
     def _apply_state(self, state):
@@ -474,6 +506,8 @@ class NovelAIDocker(DockWidget):
             self.seed.setText(values["seed"])
             self.random_seed.setChecked(values["random_seed"])
             self.n_samples.setValue(values["n_samples"])
+            self.characters.set_characters(values["characters"])
+            self.characters.set_custom_positions(values["character_positions"])
         finally:
             self._loading = False
 
@@ -535,7 +569,8 @@ class NovelAIDocker(DockWidget):
         parts = dialog.parts()
         self._follow_document()  # Import into the active document's settings.
         self._apply_state(metadata.import_state(
-            info, self._panel_state(), parts, dialog.clean.isChecked()))
+            info, self._panel_state(), parts, dialog.clean.isChecked(),
+            dialog.append.isChecked()))
         self._state_changed()  # _apply_state doesn't store them; this does.
         if metadata.SETTINGS in parts or metadata.SEED in parts:
             self.advanced_toggle.setChecked(True)  # Show what changed.
@@ -589,6 +624,10 @@ class NovelAIDocker(DockWidget):
         if not prompt:
             self.status.setText("Write a prompt first.")
             return
+        problem = self.characters.problem()
+        if problem:
+            self.status.setText(problem)
+            return
         token = settings.get("token")
         if not token:
             self.status.setText("Add your NovelAI API token in Settings.")
@@ -622,6 +661,8 @@ class NovelAIDocker(DockWidget):
             n_samples=self.n_samples.value(),
             quality=self.quality.currentData(),
             uc_preset=self.uc_preset.currentText(),
+            characters=[api.CharacterPrompt(**c) for c in self.characters.characters()],
+            use_coords=self.characters.custom_positions(),
             strength=strength,
         )
         mode = api.selection_mode(params.model, strength) if region.mask is not None else None

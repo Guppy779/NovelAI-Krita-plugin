@@ -5,7 +5,7 @@ import zlib
 
 import pytest
 
-from novelai_krita import metadata, presets
+from novelai_krita import api, metadata, presets
 
 V5 = "nai-diffusion-5-full"
 HEAVY = dict(presets.UC_PRESETS["5-full"])["Heavy"]
@@ -15,13 +15,13 @@ QUALITY = presets.QUALITY_TAGS["5-full"][presets.STANDARD]
 COMMENT = {
     "prompt": "1girl, autumn, pumpkin\n" + QUALITY,
     "steps": 28, "height": 1024, "width": 1024, "scale": 5, "cfg_rescale": 0.2,
-    "seed": 2315477932, "n_samples": 1, "noise_schedule": "karras",
+    "seed": 1234567890, "n_samples": 1, "noise_schedule": "karras",
     "sampler": "k_euler_ancestral", "uc": "nsfw, " + HEAVY + ", watermark",
     "v4_prompt": {"caption": {
         "base_caption": "1girl, autumn, pumpkin\n" + QUALITY,
         "char_captions": [{"char_caption": "girl, sweater, smile, ",
                            "centers": [{"x": 0.4, "y": 0.5}]}]},
-        "use_coords": False, "use_order": True},
+        "use_coords": True, "use_order": True},
     "v4_negative_prompt": {"caption": {
         "base_caption": "nsfw, " + HEAVY + ", watermark",
         "char_captions": [{"char_caption": "frown", "centers": [{"x": 0.4, "y": 0.5}]}]},
@@ -106,12 +106,12 @@ def test_parse_v5_image():
     info = metadata.parse(FIELDS)
     assert info.prompt == COMMENT["prompt"]
     assert info.negative == COMMENT["uc"]
-    assert info.characters == [metadata.Character("girl, sweater, smile, ", "frown")]
-    assert info.has_characters
+    assert info.characters == [api.CharacterPrompt("girl, sweater, smile, ", "frown", 0.4, 0.5)]
+    assert info.has_characters and info.use_coords is True
     assert info.settings == {"steps": 28, "scale": 5.0, "cfg_rescale": 0.2,
                              "sampler": "k_euler_ancestral", "noise_schedule": "karras"}
     assert isinstance(info.settings["scale"], float)
-    assert info.seed == 2315477932
+    assert info.seed == 1234567890
     assert info.model == "NovelAI Diffusion V5"
 
 
@@ -121,6 +121,7 @@ def test_parse_v3_image():
     info = metadata.parse({"Software": "NovelAI", "Comment": json.dumps(comment),
                            "Source": "Stable Diffusion XL C1E1DE52"})
     assert (info.prompt, info.negative, info.characters) == ("1girl", "lowres", [])
+    assert info.use_coords is None and not info.has_characters
     assert info.settings["sampler"] == "k_dpmpp_2m"
     assert info.settings["noise_schedule"] == "native"
     assert info.model == "Stable Diffusion XL C1E1DE52"
@@ -183,18 +184,22 @@ def test_split_uc_keeps_nsfw_without_a_preset():
 PANEL = {"prompt": "old prompt", "negative_prompt": "old uc", "quality_tags": "light",
          "uc_preset": "Light", "steps": 20, "scale": 6.0, "cfg_rescale": 0.0,
          "sampler": "k_euler", "noise_schedule": "exponential", "seed": "1",
-         "random_seed": True, "model": V5}
+         "random_seed": True, "model": V5, "character_positions": False,
+         "characters": [{"prompt": "boy", "negative": "", "x": 0.1, "y": 0.1, "enabled": False}]}
+IMPORTED = {"prompt": "girl, sweater, smile, ", "negative": "frown", "x": 0.4, "y": 0.5,
+            "enabled": True}
 
 
 def test_import_everything_clean():
     state = metadata.import_state(metadata.parse(FIELDS), PANEL, metadata.PARTS)
-    assert state["prompt"] == "1girl, autumn, pumpkin, girl, sweater, smile,"
+    assert state["prompt"] == "1girl, autumn, pumpkin"
     assert state["quality_tags"] == presets.STANDARD
-    assert state["negative_prompt"] == "watermark, frown"
+    assert state["negative_prompt"] == "watermark"
+    assert state["characters"] == [IMPORTED] and state["character_positions"] is True
     assert state["uc_preset"] == "Heavy"
     assert (state["steps"], state["scale"], state["cfg_rescale"]) == (28, 5.0, 0.2)
     assert (state["sampler"], state["noise_schedule"]) == ("k_euler_ancestral", "karras")
-    assert (state["seed"], state["random_seed"]) == ("2315477932", False)
+    assert (state["seed"], state["random_seed"]) == ("1234567890", False)
     assert state["model"] == V5  # The model is never changed.
 
 
@@ -211,9 +216,45 @@ def test_import_as_recorded():
 def test_import_only_some_parts():
     info = metadata.parse(FIELDS)
     state = metadata.import_state(info, PANEL, [metadata.SEED])
-    assert state == dict(PANEL, seed="2315477932", random_seed=False)
+    assert state == dict(PANEL, seed="1234567890", random_seed=False)
     state = metadata.import_state(info, PANEL, [metadata.CHARACTERS])
-    assert state["prompt"] == "old prompt, girl, sweater, smile,"
-    assert state["negative_prompt"] == "old uc, frown"
-    assert state["quality_tags"] == "light" and state["uc_preset"] == "Light"
+    assert state == dict(PANEL, characters=[IMPORTED], character_positions=True)
     assert metadata.import_state(info, PANEL, []) == PANEL
+
+
+def test_import_characters_appended():
+    info = metadata.parse(FIELDS)
+    state = metadata.import_state(info, PANEL, [metadata.CHARACTERS], append=True)
+    assert state["characters"] == PANEL["characters"] + [IMPORTED]
+    assert PANEL["characters"] != state["characters"]  # The panel's list isn't changed.
+    # AI's choice in the image: appending keeps your positions setting.
+    info.use_coords = False
+    panel = dict(PANEL, character_positions=True)
+    state = metadata.import_state(info, panel, [metadata.CHARACTERS], append=True)
+    assert state["character_positions"] is True
+    state = metadata.import_state(info, panel, [metadata.CHARACTERS])
+    assert state["character_positions"] is False
+
+
+def test_parse_characters():
+    prompt = {"caption": {"base_caption": "2girls", "char_captions": [
+        {"char_caption": "girl, red hair", "centers": [{"x": 0.1, "y": 0.9}]},
+        {"char_caption": "", "centers": []},  # Empty: left out.
+        {"char_caption": "girl, blue hair", "centers": [{"x": 7, "y": "a"}]},
+        "not a character"]}, "use_coords": False}
+    negative = {"caption": {"base_caption": "", "char_captions": [
+        {"char_caption": "smile"}]}}
+    info = metadata.parse({"Comment": json.dumps(
+        {"v4_prompt": prompt, "v4_negative_prompt": negative})})
+    assert info.characters == [api.CharacterPrompt("girl, red hair", "smile", 0.1, 0.9),
+                               api.CharacterPrompt("girl, blue hair", "", 0.5, 0.5)]
+    assert info.use_coords is False
+
+
+def test_made_from_image():
+    def info(comment):
+        return metadata.parse({"Comment": json.dumps(dict({"prompt": "x"}, **comment))})
+    assert not info({"request_type": "PromptGenerateRequest"}).made_from_image
+    assert info({"request_type": "Img2ImgRequest", "strength": 0.65}).made_from_image
+    assert not info({}).made_from_image  # Older images don't say.
+    assert not info({"request_type": 3}).made_from_image

@@ -279,3 +279,82 @@ def test_plan_region_respects_larger_budget():
     sel = (1500, 1200, 300, 300)
     _, _, w, h = api.plan_region(4000, 3000, *sel, padding_percent=20, max_pixels=1536 * 1536)
     assert w * h > api.FREE_MAX_PIXELS and w * h <= 1536 * 1536
+
+
+# ---- Character prompts -------------------------------------------------------
+
+def characters_payload(model="nai-diffusion-4-5-full", use_coords=True, **extra):
+    characters = [
+        api.CharacterPrompt("girl, red hair", "blue hair", 0.12, 0.85),
+        api.CharacterPrompt("boy, glasses", "", 0.7, 0.3),
+        api.CharacterPrompt("girl, hat", "", enabled=False),  # Left out.
+        api.CharacterPrompt("   ", "lowres"),  # Empty: left out.
+    ]
+    return api.build_payload(api.GenerationParams(
+        prompt="2people, park", model=model, characters=characters,
+        use_coords=use_coords, uc_preset="None", **extra))["parameters"]
+
+
+def test_character_payload_v45_snaps_to_the_grid():
+    params = characters_payload()
+    prompt, negative = params["v4_prompt"], params["v4_negative_prompt"]
+    assert prompt["caption"]["char_captions"] == [
+        {"char_caption": "girl, red hair", "centers": [{"x": 0.1, "y": 0.9}]},
+        {"char_caption": "boy, glasses", "centers": [{"x": 0.7, "y": 0.3}]}]
+    assert negative["caption"]["char_captions"] == [
+        {"char_caption": "blue hair", "centers": [{"x": 0.1, "y": 0.9}]},
+        {"char_caption": "", "centers": [{"x": 0.7, "y": 0.3}]}]
+    assert params["characterPrompts"] == [
+        {"prompt": "girl, red hair", "uc": "blue hair", "center": {"x": 0.1, "y": 0.9},
+         "enabled": True},
+        {"prompt": "boy, glasses", "uc": "", "center": {"x": 0.7, "y": 0.3}, "enabled": True}]
+    assert params["use_coords"] is True and prompt["use_coords"] is True
+    # Quality tags stay in the base prompt.
+    assert prompt["caption"]["base_caption"].startswith("2people, park, location")
+
+
+def test_character_payload_v5_keeps_exact_positions():
+    params = characters_payload("nai-diffusion-5-full")
+    centers = [c["centers"][0] for c in params["v4_prompt"]["caption"]["char_captions"]]
+    assert centers == [{"x": 0.12, "y": 0.85}, {"x": 0.7, "y": 0.3}]
+
+
+def test_character_payload_ai_choice():
+    params = characters_payload(use_coords=False)
+    assert params["use_coords"] is False and params["v4_prompt"]["use_coords"] is False
+    assert len(params["v4_prompt"]["caption"]["char_captions"]) == 2
+
+
+def test_no_characters_never_uses_coords():
+    params = api.build_payload(api.GenerationParams(prompt="cat", use_coords=True))["parameters"]
+    assert params["use_coords"] is False and params["characterPrompts"] == []
+    assert params["v4_prompt"]["caption"]["char_captions"] == []
+
+
+def test_character_payload_inpainting():
+    params = characters_payload(image="A", mask="B", strength=1.0)
+    assert len(params["v4_prompt"]["caption"]["char_captions"]) == 2
+
+
+def test_v3_payload_has_no_characters():
+    params = characters_payload("nai-diffusion-3")
+    assert "v4_prompt" not in params and "characterPrompts" not in params
+
+
+def test_max_characters():
+    assert api.max_characters("nai-diffusion-5-full") == 22
+    assert api.max_characters("nai-diffusion-5-curated") == 22
+    assert api.max_characters("nai-diffusion-4-5-full") == 6
+    assert api.max_characters("nai-diffusion-4-curated-preview") == 6
+    assert api.max_characters("nai-diffusion-3") == 0
+    assert api.max_characters("nai-diffusion-furry-3") == 0
+
+
+def test_grid_positions():
+    assert api.position_name(0.5, 0.5) == "C3"
+    assert api.position_name(0.1, 0.1) == "A1"
+    assert api.position_name(0.9, 0.7) == "E4"
+    assert api.position_name(0.394, 0.462) == "B3"  # Nearest cell.
+    assert api.snap_to_grid(0.0) == 0.1 and api.snap_to_grid(1.0) == 0.9
+    assert api.character_position("nai-diffusion-4-full", 0.394, 0.462) == (0.3, 0.5)
+    assert api.character_position("nai-diffusion-5-full", 0.3944, 0.462) == (0.394, 0.462)

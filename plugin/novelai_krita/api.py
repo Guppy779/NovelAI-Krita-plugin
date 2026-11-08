@@ -11,7 +11,7 @@ import math
 import random
 import urllib.parse
 import zipfile
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import List, Optional, Tuple
 
 from . import presets
@@ -203,6 +203,54 @@ def _snap_side(value: int, minimum: int, limit: int, multiple: int) -> int:
     return up if up <= limit else value
 
 
+# ---- Character prompts (V4 and newer) ---------------------------------------
+#
+# Each character gets its own prompt and undesired content, so traits don't
+# leak between characters. Positions are the character's centre, 0-1 from
+# the left and top. V4 and V4.5 only accept a 5 x 5 grid (columns A-E, rows
+# 1-5); V5 accepts any position.
+
+GRID = (0.1, 0.3, 0.5, 0.7, 0.9)
+GRID_COLUMNS = "ABCDE"
+
+
+@dataclass
+class CharacterPrompt:
+    prompt: str = ""
+    negative: str = ""
+    x: float = 0.5
+    y: float = 0.5
+    enabled: bool = True
+
+
+def max_characters(model: str) -> int:
+    """How many characters a model takes (0: no character prompts)."""
+    if not is_v4(model):
+        return 0
+    return 22 if "diffusion-5" in model else 6
+
+
+def snap_to_grid(value: float) -> float:
+    return min(GRID, key=lambda cell: abs(cell - value))
+
+
+def position_name(x: float, y: float) -> str:
+    """The grid cell nearest a position, e.g. "C3" for the centre."""
+    return GRID_COLUMNS[GRID.index(snap_to_grid(x))] + str(GRID.index(snap_to_grid(y)) + 1)
+
+
+def free_positions(model: str) -> bool:
+    """True if the model places characters anywhere (V5), not only on the grid."""
+    return "diffusion-5" in model
+
+
+def character_position(model: str, x: float, y: float) -> Tuple[float, float]:
+    """The position to send: exact for V5, the nearest grid cell before."""
+    if free_positions(model):
+        return round(x, 3), round(y, 3)
+    return snap_to_grid(x), snap_to_grid(y)
+
+
 @dataclass
 class GenerationParams:
     prompt: str
@@ -219,6 +267,10 @@ class GenerationParams:
     n_samples: int = 1
     quality: str = presets.STANDARD  # Quality tags: standard, light or off.
     uc_preset: str = presets.DEFAULT_UC_PRESET  # Undesired Content preset name.
+    # Character prompts (V4 and newer). Disabled and empty ones aren't sent.
+    # ``use_coords``: place them at their positions, not where the AI chooses.
+    characters: List[CharacterPrompt] = field(default_factory=list)
+    use_coords: bool = False
     # Image to image / inpainting. ``image`` and ``mask`` are base64 PNGs of
     # exactly width x height pixels; white in the mask means "regenerate".
     image: Optional[str] = None
@@ -268,18 +320,32 @@ def build_payload(p: GenerationParams) -> dict:
     if is_v4(p.model):
         if params["noise_schedule"] == "native":  # V3 only.
             params["noise_schedule"] = "karras"
+        # Characters as the NovelAI site sends them: in "characterPrompts",
+        # and as character captions next to the base prompt. Quality tags and
+        # the preset stay in the base prompt.
+        characters = [c for c in p.characters if c.enabled and c.prompt.strip()]
+        char_prompts, char_negatives, character_prompts = [], [], []
+        for character in characters:
+            x, y = character_position(p.model, character.x, character.y)
+            centers = [{"x": x, "y": y}]
+            char_prompts.append({"char_caption": character.prompt.strip(), "centers": centers})
+            char_negatives.append({"char_caption": character.negative.strip(), "centers": centers})
+            character_prompts.append({
+                "prompt": character.prompt.strip(), "uc": character.negative.strip(),
+                "center": {"x": x, "y": y}, "enabled": True})
+        use_coords = bool(p.use_coords and characters)
         params.update({
             "deliberate_euler_ancestral_bug": False,
             "prefer_brownian": True,
-            "use_coords": False,
-            "characterPrompts": [],
+            "use_coords": use_coords,
+            "characterPrompts": character_prompts,
             "v4_prompt": {
-                "caption": {"base_caption": prompt, "char_captions": []},
-                "use_coords": False,
+                "caption": {"base_caption": prompt, "char_captions": char_prompts},
+                "use_coords": use_coords,
                 "use_order": True,
             },
             "v4_negative_prompt": {
-                "caption": {"base_caption": negative, "char_captions": []},
+                "caption": {"base_caption": negative, "char_captions": char_negatives},
                 "legacy_uc": False,
             },
         })

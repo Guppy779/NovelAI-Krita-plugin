@@ -24,6 +24,7 @@ DEFAULTS = {
     "n_samples": "1",
     "quality_tags": presets.STANDARD,
     "uc_preset": presets.DEFAULT_UC_PRESET,
+    "character_positions": "false",
     "max_pixels": str(api.FREE_MAX_PIXELS),
     "context_padding": "20",
     "show_advanced": "false",

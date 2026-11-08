@@ -14,11 +14,12 @@ THUMBNAIL_SIZE = 200
 LABELS = {
     metadata.PROMPT: "Prompt",
     metadata.NEGATIVE: "Undesired content",
-    metadata.CHARACTERS: "Characters (added to the prompt)",
+    metadata.CHARACTERS: "Characters",
     metadata.SETTINGS: "Settings",
     metadata.SEED: "Seed",
 }
-CLEAN = "clean"
+# Options remembered along with the parts (setting "import_parts").
+CLEAN, APPEND = "clean", "append"
 
 
 def read_image(path):
@@ -43,6 +44,13 @@ def _short(text, limit=600):
     return text if len(text) <= limit else text[:limit] + "..."
 
 
+def _indented(widget):
+    row = QHBoxLayout()
+    row.addSpacing(16)
+    row.addWidget(widget)
+    return row
+
+
 class ImportDialog(QDialog):
     """Choose which parts of an image's generation info to import."""
 
@@ -64,12 +72,19 @@ class ImportDialog(QDialog):
             "Made with %s" % info.model if info.model else "Made with NovelAI"))
         heading.setWordWrap(True)
         heading.setTextFormat(Qt.TextFormat.RichText)
+        warning = QLabel(
+            "This image was made from another image (e.g. image to image), so its "
+            "prompt and settings alone won't give the same picture.")
+        warning.setWordWrap(True)
+        warning.setStyleSheet("color: #e8a33d;")  # As the panel's Costs Anlas note.
+        warning.setVisible(info.made_from_image)
 
         details = {
             metadata.PROMPT: _short(info.prompt),
             metadata.NEGATIVE: _short(info.negative),
             metadata.CHARACTERS: "\n\n".join(
-                _short(c.prompt, 300) for c in info.characters if c.prompt.strip()),
+                "%d. %s" % (index + 1, _short(c.prompt, 300))
+                for index, c in enumerate(info.characters)),
             metadata.SETTINGS: self._settings_text(info.settings),
             metadata.SEED: str(info.seed) if info.seed is not None else "",
         }
@@ -85,6 +100,7 @@ class ImportDialog(QDialog):
         layout = QVBoxLayout(self)
         layout.addWidget(thumbnail)
         layout.addWidget(heading)
+        layout.addWidget(warning)
         layout.addWidget(QLabel("Import:"))
         for part in metadata.PARTS:
             box = QCheckBox(LABELS[part])
@@ -94,6 +110,13 @@ class ImportDialog(QDialog):
             box.toggled.connect(self._update_button)
             layout.addWidget(box)
             self._boxes[part] = box
+            if part == metadata.CHARACTERS:
+                self.append = QCheckBox("Add to the current characters")
+                self.append.setChecked(APPEND in remembered)
+                self.append.setToolTip(
+                    "On: the image's characters are added after the ones you have.\n"
+                    "Off: they replace them.")
+                layout.addLayout(_indented(self.append))
 
         self.clean = QCheckBox("Move quality tags and preset into their boxes")
         self.clean.setChecked(CLEAN in remembered)
@@ -104,11 +127,8 @@ class ImportDialog(QDialog):
             "Undesired preset boxes instead.\n"
             "Off: the text is kept as recorded and both boxes are turned off.\n"
             "Either way, the request sent to NovelAI is the same.")
-        row = QHBoxLayout()
-        row.addSpacing(16)
-        row.addWidget(self.clean)
         layout.addSpacing(6)
-        layout.addLayout(row)
+        layout.addLayout(_indented(self.clean))
 
         self._buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Cancel)
         self._import = self._buttons.addButton(
@@ -132,17 +152,17 @@ class ImportDialog(QDialog):
         self._import.setEnabled(bool(self.parts()))
         self.clean.setEnabled(any(
             self._boxes[part].isChecked() for part in (metadata.PROMPT, metadata.NEGATIVE)))
+        self.append.setEnabled(metadata.CHARACTERS in self.parts())
 
     def accept(self):
-        # Remember the choices; parts this image doesn't have keep their old setting.
+        # Remember the choices. Parts and options that don't apply to this
+        # image keep their old setting.
         remembered = set(settings.get("import_parts").split(","))
-        for part, box in self._boxes.items():
+        choices = dict(self._boxes, **{CLEAN: self.clean, APPEND: self.append})
+        for name, box in choices.items():
             if box.isEnabled():
-                remembered.discard(part)
+                remembered.discard(name)
                 if box.isChecked():
-                    remembered.add(part)
-        remembered.discard(CLEAN)
-        if self.clean.isChecked():
-            remembered.add(CLEAN)
+                    remembered.add(name)
         settings.set("import_parts", ",".join(sorted(p for p in remembered if p)))
         super().accept()

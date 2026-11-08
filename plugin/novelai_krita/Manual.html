@@ -11,7 +11,7 @@
       (novelai.net &rarr; User Settings &rarr; Account &rarr; Get Persistent API Token).</li>
 </ol>
 <h4>Settings per document</h4>
-<p>Each document keeps its own prompt, undesired content and generation settings,
+<p>Each document keeps its own prompt, undesired content, characters and generation settings,
 and the panel switches with the active document. They are saved inside the
 <b>.kra</b> file (not in flat formats such as PNG). New documents start with the
 settings of your last generation and empty prompts. Changing only the prompt
@@ -27,6 +27,24 @@ to the request but not shown in the text boxes.</p>
 </ul>
 <p>Like the site, for models that aren't Curated, <i>nsfw</i> is added to the undesired
 content unless your prompt includes it.</p>
+<h4>Characters</h4>
+<p>With V4 and newer models, each character can have its own prompt and undesired
+content, so traits don't leak between characters. Put the scene and the number of
+characters in the main prompt (e.g. <i>2girls, park</i>), then click <b>+ Add</b> for each
+character and describe it with <i>girl</i>, <i>boy</i> or <i>other</i> (no number).</p>
+<ul>
+  <li>The checkbox leaves a character out without deleting it; the arrows set the
+      order (NovelAI tends to follow it, left to right); &#x2715; removes it.</li>
+  <li><b>AI's choice</b> lets NovelAI place the characters. <b>Custom positions</b>
+      adds a position button to each character, which opens a small canvas in the
+      image's shape with a numbered dot per character. Drag the dots (or click to
+      move the highlighted one). V5 places characters anywhere; V4 and V4.5 snap to a
+      5 x 5 grid (columns A-E left to right, rows 1-5 top to bottom).</li>
+  <li>V4 and V4.5 take up to 6 characters, V5 up to 22, V3 none.</li>
+  <li><i>source#</i>, <i>target#</i> and <i>mutual#</i> in front of an action tag
+      describe interactions, e.g. <i>source#hug</i> and <i>target#hug</i>.</li>
+</ul>
+<p>Characters are saved with the document. New documents start without them.</p>
 <h4>Anlas and V5 allowance</h4>
 <p>The line under the model shows your plan, your Anlas and, on Opus, how much of
 the V5 allowance is left (e.g. <i>Opus &middot; 12,500 Anlas &middot; V5 85%</i>). Hover it for
@@ -53,8 +71,8 @@ A dialog shows what the image contains; tick what to import: the <b>prompt</b>,
 <b>undesired content</b>, <b>characters</b>, <b>settings</b> (steps, prompt guidance,
 guidance rescale, sampler, noise schedule) and <b>seed</b>. The model is not changed.</p>
 <ul>
-  <li>The plugin has no character prompts yet, so character prompts are added to
-      the end of the prompt (and their undesired content to the undesired content).</li>
+  <li>Imported characters replace yours, or with <b>Add to the current
+      characters</b>, come after them. They keep their positions.</li>
   <li><b>Move quality tags and preset into their boxes</b> takes NovelAI's quality
       tags and Undesired Content preset out of the imported text and chooses them in
       the Quality tags and Undesired preset boxes. Turned off, the text is imported

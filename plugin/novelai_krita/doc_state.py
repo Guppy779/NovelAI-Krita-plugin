@@ -29,9 +29,29 @@ FIELDS = {
     "seed": str,
     "random_seed": bool,
     "n_samples": int,
+    # Character prompts: a list of {"prompt", "negative", "x", "y", "enabled"}
+    # (api.CharacterPrompt), and whether they're placed at their positions.
+    "characters": list,
+    "character_positions": bool,
 }
 # Kept per document only; new documents start with these empty.
-PROMPTS = ("prompt", "negative_prompt")
+PROMPTS = ("prompt", "negative_prompt", "characters")
+
+
+def _character(item: Any):
+    """A stored character, checked and completed, or None if unusable."""
+    if not isinstance(item, dict) or not isinstance(item.get("prompt"), str):
+        return None
+    character = {"prompt": item["prompt"], "negative": "", "x": 0.5, "y": 0.5, "enabled": True}
+    if isinstance(item.get("negative"), str):
+        character["negative"] = item["negative"]
+    for key in ("x", "y"):
+        value = item.get(key)
+        if _valid(value, float) and 0.0 <= value <= 1.0:
+            character[key] = float(value)
+    if isinstance(item.get("enabled"), bool):
+        character["enabled"] = item["enabled"]
+    return character
 
 
 def _valid(value: Any, kind: type) -> bool:
@@ -61,6 +81,9 @@ def decode(data: bytes) -> Dict[str, Any]:
     state = {}
     for key, kind in FIELDS.items():
         value = obj.get(key)
-        if _valid(value, kind):
+        if kind is list:
+            if isinstance(value, list):
+                state[key] = [c for c in map(_character, value) if c is not None]
+        elif _valid(value, kind):
             state[key] = float(value) if kind is float else value
     return state

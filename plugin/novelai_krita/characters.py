@@ -343,6 +343,8 @@ class CharacterEditor(QWidget):
 
     def _create(self, value=None):
         card = CharacterCard(self, self._suggest, self._on_image)
+        card.prompt.set_model(self._model)
+        card.negative.set_model(self._model)
         if value is not None:
             card.set_value(value)
         self._cards.append(card)
@@ -430,6 +432,9 @@ class CharacterEditor(QWidget):
     def set_model(self, model):
         self._model = model
         self._max = api.max_characters(model)
+        for card in self._cards:
+            card.prompt.set_model(model)
+            card.negative.set_model(model)
         self._refresh()
 
     def problem(self):

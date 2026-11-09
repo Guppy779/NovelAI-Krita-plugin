@@ -17,6 +17,7 @@ or Anlatan.
 - **Live preview** that shows the image forming on the canvas while it generates.
 - **Tag autocomplete** in both prompt boxes. Typing Japanese also suggests the matching
   English tags.
+- **Coloured prompt weights**, like the site: `{ }`, `[ ]` and `1.2::tag::` show at a glance.
 - **Quality tags and Undesired Content presets** for each model, applied the way the site
   applies them.
 - **Character prompts** (V4 and newer): a prompt and undesired content for each character,
@@ -119,6 +120,9 @@ Select the area to change with any selection tool, set Strength, and click Gener
 - **Autocomplete** suggests tags for the word at the cursor, free of charge. Use Up and Down
   to choose, **Tab** or **Enter** to insert, and **Escape** to close the list. Italic
   suggestions are fuzzy matches.
+- **Weights are coloured** as you type, as on the site: orange-red for tags weighted above 1
+  (`{tag}`, `1.2::tag::`), blue for below 1 (`[tag]`, `0.8::tag::`) and green for the closing
+  `::`. The further a weight is from 1, the stronger the colour.
 - **Advanced options** has steps, prompt guidance, guidance rescale, sampler, noise schedule,
   seed and the number of images. Untick **Random** to keep a fixed seed.
 
@@ -285,6 +289,7 @@ plugin/
     import_dialog.py        The Import from image dialog
     prompt_edit.py          Prompt box with tag autocomplete popup
     tags.py                 Finding the tag at the cursor (plain Python, tested)
+    weights.py              Where a prompt is weighted, for colouring it (plain Python, tested)
     presets.py              Quality tags and Undesired Content presets (plain Python, tested)
     settings.py             Settings stored in kritarc
     settings_dialog.py      The Settings dialog

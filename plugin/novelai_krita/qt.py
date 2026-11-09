@@ -11,7 +11,7 @@ try:
     )
     from PyQt5.QtGui import (  # noqa: F401
         QColor, QFont, QIcon, QImage, QPainter, QPen, QPixmap, QStandardItem,
-        QStandardItemModel, QTextCursor,
+        QStandardItemModel, QSyntaxHighlighter, QTextCharFormat, QTextCursor,
     )
     from PyQt5.QtNetwork import (  # noqa: F401
         QNetworkAccessManager, QNetworkReply, QNetworkRequest,
@@ -31,7 +31,7 @@ except ImportError:
     )
     from PyQt6.QtGui import (  # noqa: F401
         QColor, QFont, QIcon, QImage, QPainter, QPen, QPixmap, QStandardItem,
-        QStandardItemModel, QTextCursor,
+        QStandardItemModel, QSyntaxHighlighter, QTextCharFormat, QTextCursor,
     )
     from PyQt6.QtNetwork import (  # noqa: F401
         QNetworkAccessManager, QNetworkReply, QNetworkRequest,

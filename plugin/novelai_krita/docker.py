@@ -368,6 +368,8 @@ class NovelAIDocker(DockWidget):
         model, showing the user's choices where the model has them."""
         model = self._model_name()
         self.characters.set_model(model)
+        self.prompt.set_model(model)
+        self.negative.set_model(model)
 
         self.quality.blockSignals(True)
         self.quality.clear()

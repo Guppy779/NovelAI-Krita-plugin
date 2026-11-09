@@ -65,6 +65,11 @@ the cursor (free, no Anlas). Use Up/Down to choose, <b>Tab</b> or <b>Enter</b>
 to insert, <b>Escape</b> to close. Italic suggestions are fuzzy matches.
 Typing Japanese (e.g. 銀髪) suggests the English tag. It can be turned off in
 Settings.</p>
+<h4>Coloured weights</h4>
+<p>Weighted parts of a prompt are coloured as you type, as on the NovelAI site:
+orange-red for above 1 (<code>{tag}</code>, <code>1.2::tag::</code>), blue for
+below 1 (<code>[tag]</code>, <code>0.8::tag::</code>) and green for the closing
+<code>::</code>. The further a weight is from 1, the stronger the colour.</p>
 <h4>Import from an image</h4>
 <p>Drop an image made with NovelAI onto either prompt box to reuse how it was made.
 A dialog shows what the image contains; tick what to import: the <b>prompt</b>,

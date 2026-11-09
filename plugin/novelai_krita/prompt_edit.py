@@ -7,14 +7,16 @@ this widget knows nothing about tokens or models.
 
 Image files dropped on the box go to an ``on_image`` callback (to import
 their prompt) instead of being inserted as text.
+
+Weighted parts of the prompt are coloured as on the NovelAI site.
 """
 
 import os
 
-from . import api
+from . import api, weights
 from .qt import (
-    QCompleter, QFont, QModelIndex, QPlainTextEdit, QStandardItem,
-    QStandardItemModel, Qt, QTextCursor, QTimer,
+    QColor, QCompleter, QFont, QModelIndex, QPlainTextEdit, QStandardItem,
+    QStandardItemModel, QSyntaxHighlighter, Qt, QTextCharFormat, QTextCursor, QTimer,
 )
 from .tags import completion_text, tag_at_cursor
 
@@ -27,6 +29,32 @@ _HIDE_KEYS = (Qt.Key.Key_Left, Qt.Key.Key_Right, Qt.Key.Key_Home, Qt.Key.Key_End
 
 
 IMAGE_EXTENSIONS = (".png", ".webp", ".jpg", ".jpeg")
+
+# The NovelAI site's default dark theme.
+WEIGHT_COLORS = {weights.HIGH: "#b83700", weights.MID: "#009707", weights.LOW: "#0466ce"}
+
+
+def _utf16_length(text):
+    """``text``'s length in Qt's units, where an emoji counts as two."""
+    return len(text.encode("utf-16-le", "surrogatepass")) // 2
+
+
+class _WeightHighlighter(QSyntaxHighlighter):
+    """Colours weighted text. A line starts with the weight the last one ended on."""
+
+    numeric = True  # The model understands 1.2:: weights.
+
+    def highlightBlock(self, text):
+        found, weight = weights.spans(
+            text, weights.from_state(self.previousBlockState()), self.numeric)
+        for span in found:
+            color = QColor(WEIGHT_COLORS[span.color])
+            color.setAlphaF(span.opacity)
+            style = QTextCharFormat()
+            style.setBackground(color)
+            start = _utf16_length(text[:span.start])
+            self.setFormat(start, _utf16_length(text[span.start:span.end]), style)
+        self.setCurrentBlockState(weights.to_state(weight))
 
 
 class PromptEdit(QPlainTextEdit):
@@ -52,6 +80,16 @@ class PromptEdit(QPlainTextEdit):
         self._timer.setInterval(DELAY_MS)
         self._timer.timeout.connect(self._lookup)
         self.textChanged.connect(self._text_changed)
+        self._highlighter = _WeightHighlighter(self.document())
+
+    def set_model(self, model):
+        """Colour the weights the way ``model`` reads them."""
+        numeric = api.is_v4(model)
+        if numeric != self._highlighter.numeric:
+            self._highlighter.numeric = numeric
+            blocked = self.blockSignals(True)  # New colours aren't an edit.
+            self._highlighter.rehighlight()
+            self.blockSignals(blocked)
 
     def _text_changed(self):
         # Close stale suggestions as soon as there is no tag at the cursor

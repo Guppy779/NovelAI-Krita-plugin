@@ -227,7 +227,7 @@ def max_characters(model: str) -> int:
     """How many characters a model takes (0: no character prompts)."""
     if not is_v4(model):
         return 0
-    return 22 if "diffusion-5" in model else 6
+    return 22 if free_positions(model) else 6
 
 
 def snap_to_grid(value: float) -> float:

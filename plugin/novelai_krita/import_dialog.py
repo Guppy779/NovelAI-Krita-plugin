@@ -1,8 +1,9 @@
 """Importing the prompt and settings of a NovelAI image dropped on a prompt box."""
 
+import html
 import os
 
-from . import metadata, settings
+from . import api, metadata, settings
 from .qt import (
     QCheckBox, QDialog, QDialogButtonBox, QHBoxLayout, QImage, QLabel, QPixmap, Qt,
     QVBoxLayout, image_bytes,
@@ -44,6 +45,11 @@ def _short(text, limit=600):
     return text if len(text) <= limit else text[:limit] + "..."
 
 
+def _plain_tooltip(text):
+    """A tooltip that shows ``text`` literally: Qt renders HTML in tooltips."""
+    return "<span style='white-space: pre-wrap'>%s</span>" % html.escape(text)
+
+
 def _indented(widget):
     row = QHBoxLayout()
     row.addSpacing(16)
@@ -67,9 +73,8 @@ class ImportDialog(QDialog):
                 Qt.TransformationMode.SmoothTransformation)))
         if len(name) > 60:  # Keep the dialog a sensible width.
             name = name[:28] + "..." + name[-28:]
-        heading = QLabel("<b>%s</b><br>%s" % (
-            name.replace("&", "&amp;").replace("<", "&lt;"),
-            "Made with %s" % info.model if info.model else "Made with NovelAI"))
+        heading = QLabel("<b>%s</b><br>Made with %s" % (
+            html.escape(name), html.escape(info.model or "NovelAI")))
         heading.setWordWrap(True)
         heading.setTextFormat(Qt.TextFormat.RichText)
         warning = QLabel(
@@ -106,7 +111,8 @@ class ImportDialog(QDialog):
             box = QCheckBox(LABELS[part])
             box.setEnabled(available[part])
             box.setChecked(available[part] and part in remembered)
-            box.setToolTip(details[part] if available[part] else "Not in this image.")
+            box.setToolTip(_plain_tooltip(details[part]) if available[part]
+                           else "Not in this image.")
             box.toggled.connect(self._update_button)
             layout.addWidget(box)
             self._boxes[part] = box
@@ -123,10 +129,10 @@ class ImportDialog(QDialog):
         self.clean.setToolTip(
             "NovelAI records the prompt as it was sent: with the quality tags at the\n"
             "end and the Undesired Content preset at the start.\n"
-            "On: they are taken out of the text and chosen in the Quality tags and\n"
-            "Undesired preset boxes instead.\n"
-            "Off: the text is kept as recorded and both boxes are turned off.\n"
-            "Either way, the request sent to NovelAI is the same.")
+            "On: if the selected model has them, they are taken out of the text and\n"
+            "chosen in the Quality tags and Undesired preset boxes instead.\n"
+            "Otherwise they stay in the text, so they're still sent.\n"
+            "Off: the text is kept as recorded and both boxes are turned off.")
         layout.addSpacing(6)
         layout.addLayout(_indented(self.clean))
 
@@ -140,7 +146,10 @@ class ImportDialog(QDialog):
 
     @staticmethod
     def _settings_text(values):
-        names = [("steps", "Steps"), ("scale", "Prompt guidance"),
+        values = dict(values)
+        if "model" in values:
+            values["model"] = dict(api.MODELS).get(values["model"], values["model"])
+        names = [("model", "Model"), ("steps", "Steps"), ("scale", "Prompt guidance"),
                  ("cfg_rescale", "Guidance rescale"), ("sampler", "Sampler"),
                  ("noise_schedule", "Noise schedule")]
         return "\n".join("%s: %s" % (label, values[key]) for key, label in names if key in values)

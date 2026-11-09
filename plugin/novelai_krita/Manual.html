@@ -68,15 +68,16 @@ Settings.</p>
 <h4>Import from an image</h4>
 <p>Drop an image made with NovelAI onto either prompt box to reuse how it was made.
 A dialog shows what the image contains; tick what to import: the <b>prompt</b>,
-<b>undesired content</b>, <b>characters</b>, <b>settings</b> (steps, prompt guidance,
-guidance rescale, sampler, noise schedule) and <b>seed</b>. The model is not changed.</p>
+<b>undesired content</b>, <b>characters</b>, <b>settings</b> (model, steps, prompt
+guidance, guidance rescale, sampler, noise schedule) and <b>seed</b>.</p>
 <ul>
   <li>Imported characters replace yours, or with <b>Add to the current
       characters</b>, come after them. They keep their positions.</li>
   <li><b>Move quality tags and preset into their boxes</b> takes NovelAI's quality
       tags and Undesired Content preset out of the imported text and chooses them in
-      the Quality tags and Undesired preset boxes. Turned off, the text is imported
-      as recorded and both boxes are turned off. Either way the request is the same.</li>
+      the Quality tags and Undesired preset boxes, if the selected model has them.
+      If it doesn't, they stay in the text so they're still sent. Turned off, the text
+      is imported as recorded and both boxes are turned off.</li>
 </ul>
 <p>The prompt is read from the PNG's text, or from the copy NovelAI hides in the
 image's transparency, which survives some programs that remove the text. JPEGs

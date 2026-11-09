@@ -2,7 +2,7 @@
 
 import os
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from krita import DockWidget
 
@@ -31,6 +31,9 @@ class Result:
     prompt: str
     document: object
     original: bytes = b""  # The file exactly as NovelAI sent it.
+    # The panel's character prompts when it was made, for "Use this prompt".
+    characters: list = field(default_factory=list)
+    custom_positions: bool = False
 
 
 class _Panel(QWidget):
@@ -574,7 +577,7 @@ class NovelAIDocker(DockWidget):
         self._state_changed()  # _apply_state doesn't store them; this does.
         if metadata.SETTINGS in parts or metadata.SEED in parts:
             self.advanced_toggle.setChecked(True)  # Show what changed.
-        imported = [IMPORT_LABELS[part].split(" (")[0].lower() for part in parts]
+        imported = [IMPORT_LABELS[part].lower() for part in parts]
         if len(imported) > 1:
             imported[-2:] = ["%s and %s" % (imported[-2], imported[-1])]
         self.status.setText("Imported the %s from %s." % (", ".join(imported), name))
@@ -628,6 +631,8 @@ class NovelAIDocker(DockWidget):
         if problem:
             self.status.setText(problem)
             return
+        characters = self.characters.characters()
+        custom_positions = self.characters.custom_positions()
         token = settings.get("token")
         if not token:
             self.status.setText("Add your NovelAI API token in Settings.")
@@ -661,8 +666,8 @@ class NovelAIDocker(DockWidget):
             n_samples=self.n_samples.value(),
             quality=self.quality.currentData(),
             uc_preset=self.uc_preset.currentText(),
-            characters=[api.CharacterPrompt(**c) for c in self.characters.characters()],
-            use_coords=self.characters.custom_positions(),
+            characters=[api.CharacterPrompt(**c) for c in characters],
+            use_coords=custom_positions,
             strength=strength,
         )
         mode = api.selection_mode(params.model, strength) if region.mask is not None else None
@@ -686,7 +691,8 @@ class NovelAIDocker(DockWidget):
         self.status.setText("Generating %d x %d (%s)..." % (width, height, params.action))
         self._started = time.monotonic()
         self._set_busy(True)
-        on_images = lambda images: self._on_images(images, doc, region, seed, prompt, sent_image)
+        on_images = lambda images: self._on_images(
+            images, doc, region, seed, prompt, sent_image, characters, custom_positions)
         if settings.get_bool("live_preview") and api.supports_streaming(params.model):
             self._preview_doc = doc
             self._job = self._client.generate_stream(
@@ -732,7 +738,8 @@ class NovelAIDocker(DockWidget):
             self._preview = None
             self._preview_doc = None
 
-    def _on_images(self, images, doc, region, seed, prompt, sent_image=None):
+    def _on_images(self, images, doc, region, seed, prompt, sent_image=None,
+                   characters=(), custom_positions=False):
         self._job = None
         self._clear_preview()
         self._set_busy(False)
@@ -752,7 +759,8 @@ class NovelAIDocker(DockWidget):
                 image=canvas.compose_result(image, region, sent_image),
                 x=region.x, y=region.y,
                 seed=image_seed if image_seed is not None else seed + index,
-                prompt=prompt, document=doc, original=data)
+                prompt=prompt, document=doc, original=data,
+                characters=list(characters), custom_positions=custom_positions)
             self._add_history(result)
             if doc is not None:
                 self._insert(result, visible=(index == 0))
@@ -866,3 +874,6 @@ class NovelAIDocker(DockWidget):
             self.advanced_toggle.setChecked(True)
         elif chosen == use_prompt:
             self.prompt.setPlainText(result.prompt)
+            self.characters.set_characters(result.characters)
+            self.characters.set_custom_positions(result.custom_positions)
+            self._state_changed()  # Setting the characters doesn't store them.

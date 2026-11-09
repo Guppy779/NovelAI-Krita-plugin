@@ -114,7 +114,7 @@ def stealth_text(alpha: bytes, width: int, height: int, stride: int = 0) -> Dict
         if compressed:
             payload = _decompress(payload, 16 + zlib.MAX_WBITS)  # gzip
         data = json.loads(payload.decode("utf-8"))
-    except (zlib.error, ValueError):
+    except (zlib.error, ValueError, RecursionError):
         return {}
     if not isinstance(data, dict):
         return {}
@@ -133,7 +133,7 @@ class ImageInfo:
     negative: str = ""
     characters: List[api.CharacterPrompt] = field(default_factory=list)
     use_coords: Optional[bool] = None  # Characters placed at their positions.
-    # Generation settings, by their doc_state names: steps, scale,
+    # Generation settings, by their doc_state names: model, steps, scale,
     # cfg_rescale, sampler and noise_schedule (only those it has valid values for).
     settings: Dict[str, object] = field(default_factory=dict)
     seed: Optional[int] = None
@@ -154,6 +154,22 @@ class ImageInfo:
 
 
 TEXT_TO_IMAGE = "PromptGenerateRequest"
+
+
+# The "Source" field ends in a hash of the model that made the image. These
+# are the hashes the NovelAI site itself recognises when importing an image.
+_MODEL_HASHES = {
+    "nai-diffusion-5-full": ("657484A5", "0ADF9AB7"),
+    "nai-diffusion-5-curated": ("DB276663",),
+    "nai-diffusion-5-full-medium": ("93F4BD30", "70AB5786"),
+    "nai-diffusion-4-5-full": ("4BDE2A90", "1229B44F", "B9F340FD", "F3D95188"),
+    "nai-diffusion-4-5-curated": ("C02D4F98", "5AB81C7C", "B5A2A797"),
+    "nai-diffusion-4-full": ("37442FCA", "4F49EC75", "CA4B7203", "79F47848", "F6302A9D"),
+    "nai-diffusion-4-curated-preview": ("7ABFFA2A", "C1CCBA86", "770A9E12"),
+    "nai-diffusion-3": ("B0BDF6C1", "C1E1DE52", "7BCCAA2C", "1120E6A9", "8BA2AF87"),
+    "nai-diffusion-furry-3": ("4BE8C60C", "C8704949", "37C2B166", "F306816B", "9CC2F394"),
+}
+_MODEL_BY_HASH = {value: name for name, values in _MODEL_HASHES.items() for value in values}
 
 
 def _number(value, low, high):
@@ -191,7 +207,7 @@ def parse(fields: Dict[str, str]) -> Optional[ImageInfo]:
     """The generation info in an image's fields, or None if it has none."""
     try:
         comment = json.loads(fields.get("Comment") or "")
-    except ValueError:
+    except (ValueError, RecursionError):  # RecursionError: absurdly nested JSON.
         comment = None
     description = fields.get("Description") or ""
     model = fields.get("Source") or ""
@@ -213,6 +229,8 @@ def parse(fields: Dict[str, str]) -> Optional[ImageInfo]:
         negative = comment["uc"]
     info.prompt = prompt or description
     info.negative = negative
+    if model.rsplit(" ", 1)[-1] in _MODEL_BY_HASH:  # Otherwise it's left as it is.
+        info.settings["model"] = _MODEL_BY_HASH[model.rsplit(" ", 1)[-1]]
     for index, item in enumerate(char_prompts):
         other = char_negatives[index] if index < len(char_negatives) else None
         character = api.CharacterPrompt(_character_text(item), _character_text(other))
@@ -232,10 +250,9 @@ def parse(fields: Dict[str, str]) -> Optional[ImageInfo]:
     rescale = _number(comment.get("cfg_rescale"), 0.0, 1.0)
     if rescale is not None:
         info.settings["cfg_rescale"] = float(rescale)
-    if comment.get("sampler") in dict(api.SAMPLERS):
-        info.settings["sampler"] = comment["sampler"]
-    if comment.get("noise_schedule") in api.NOISE_SCHEDULES:
-        info.settings["noise_schedule"] = comment["noise_schedule"]
+    for key, options in (("sampler", dict(api.SAMPLERS)), ("noise_schedule", api.NOISE_SCHEDULES)):
+        if isinstance(comment.get(key), str) and comment[key] in options:
+            info.settings[key] = comment[key]
     seed = comment.get("seed")
     if isinstance(seed, int) and not isinstance(seed, bool) and 0 <= seed <= api.MAX_SEED:
         info.seed = seed
@@ -246,36 +263,36 @@ def parse(fields: Dict[str, str]) -> Optional[ImageInfo]:
 
 # ---- Separating what NovelAI added -------------------------------------------
 
-# Every model's quality tags and presets, longest first: a longer text can
+# Only the current model's tags and presets are taken out of the text: those
+# are the ones its boxes can add back. Longest first, as a longer text can
 # start with a shorter one (Human Focus is Heavy plus more tags).
-_QUALITY = sorted({(text, level) for tags in presets.QUALITY_TAGS.values()
-                   for level, text in tags.items()}, key=lambda item: -len(item[0]))
-_UC_PRESETS = sorted({(text, name) for options in presets.UC_PRESETS.values()
-                      for name, text in options}, key=lambda item: -len(item[0]))
 
 
-def split_quality(prompt: str) -> Tuple[str, str]:
+def split_quality(prompt: str, model: str) -> Tuple[str, str]:
     """(prompt without quality tags, quality level) of a recorded prompt."""
-    for text, level in _QUALITY:
+    tags = presets.QUALITY_TAGS.get(presets.model_key(model), {})
+    for level, text in sorted(tags.items(), key=lambda item: -len(item[1])):
         if prompt.endswith(text):
             return prompt[:-len(text)].rstrip(), level
     return prompt, presets.OFF
 
 
-def split_uc(negative: str) -> Tuple[str, str]:
+def split_uc(negative: str, model: str) -> Tuple[str, str]:
     """(the user's own undesired content, preset name) of a recorded one.
 
     The site writes "nsfw, " (for models that aren't Curated), then the
     preset, then the user's own text. "nsfw" is only removed together with
-    a preset, so it is never lost: generating with a model that isn't
-    Curated adds it back, as the site does.
+    a preset and for a model that isn't Curated, so it is never lost:
+    generating adds it back, as the site does.
     """
     text = negative.strip()
-    for lead in ("nsfw, ", ""):
+    options = sorted(presets.UC_PRESETS.get(presets.model_key(model), []),
+                     key=lambda item: -len(item[1]))
+    for lead in ("",) if presets.is_curated(model) else ("nsfw, ", ""):
         if not text.startswith(lead):
             continue
         rest = text[len(lead):]
-        for preset, name in _UC_PRESETS:
+        for name, preset in options:
             if rest == preset:
                 return "", name
             if rest.startswith(preset):
@@ -296,17 +313,22 @@ def import_state(info: ImageInfo, state: dict, parts, clean: bool = True,
     """The panel state (see doc_state.FIELDS) after importing ``parts`` of ``info``.
 
     ``clean`` moves NovelAI's quality tags and Undesired Content preset out of
-    the text into their boxes; otherwise the text is kept as recorded and the
-    boxes are turned off. Either way the request stays the same.
+    the text into their boxes, if the state's model has them; otherwise the
+    text is kept as recorded and the boxes are turned off.
     ``append`` adds the image's characters after the current ones instead of
     replacing them.
     """
     state = dict(state)
+    if SETTINGS in parts:  # First: the model decides what ``clean`` can move.
+        state.update(info.settings)
+    model = state.get("model", "")
     if PROMPT in parts:
-        prompt, quality = split_quality(info.prompt) if clean else (info.prompt, presets.OFF)
+        prompt, quality = (split_quality(info.prompt, model) if clean
+                           else (info.prompt, presets.OFF))
         state["prompt"], state["quality_tags"] = prompt, quality
     if NEGATIVE in parts:
-        negative, preset = split_uc(info.negative) if clean else (info.negative, presets.NONE)
+        negative, preset = (split_uc(info.negative, model) if clean
+                            else (info.negative, presets.NONE))
         state["negative_prompt"], state["uc_preset"] = negative, preset
     if CHARACTERS in parts:
         imported = [asdict(character) for character in info.characters]
@@ -314,8 +336,6 @@ def import_state(info: ImageInfo, state: dict, parts, clean: bool = True,
                                if append else imported)
         if info.use_coords or (info.use_coords is not None and not append):
             state["character_positions"] = info.use_coords
-    if SETTINGS in parts:
-        state.update(info.settings)
     if SEED in parts and info.seed is not None:
         state["seed"], state["random_seed"] = str(info.seed), False
     return state

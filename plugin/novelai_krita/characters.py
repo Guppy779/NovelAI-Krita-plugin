@@ -145,6 +145,13 @@ class PositionCanvas(QWidget):
             self._move(self._dragging, _event_point(event))
 
     def mouseReleaseEvent(self, event):
+        self._finish_drag()
+
+    def hideEvent(self, event):
+        self._finish_drag()  # Closed mid-drag (Esc): there will be no release.
+        super().hideEvent(event)
+
+    def _finish_drag(self):
         if self._dragging is not None:
             self._dragging = None
             self._editor.changed()  # Stored once per drag, not on every move.
@@ -168,9 +175,9 @@ class PositionButton(QToolButton):
         layout.setContentsMargins(6, 6, 6, 6)
         layout.addWidget(self.canvas, 0, Qt.AlignmentFlag.AlignHCenter)
         layout.addWidget(self._hint)
-        action = QWidgetAction(menu)
-        action.setDefaultWidget(content)
-        menu.addAction(action)
+        self._action = QWidgetAction(menu)
+        self._action.setDefaultWidget(content)
+        menu.addAction(self._action)
         menu.aboutToShow.connect(self._about_to_show)
         self.setMenu(menu)
         self.refresh()
@@ -183,6 +190,9 @@ class PositionButton(QToolButton):
             "Drag the dots, or click to move the highlighted one. This model "
             "places characters on the 5 x 5 grid; V5 places them anywhere.")
         self._hint.setFixedWidth(max(self.canvas.width(), 200))
+        # QMenu only measures its items again after one of them changes.
+        self._action.setVisible(False)
+        self._action.setVisible(True)
 
     def position(self):
         return self._x, self._y
@@ -305,7 +315,7 @@ class CharacterEditor(QWidget):
         self.add_button = QToolButton()
         self.add_button.setText("+ Add")
         self.add_button.setToolTip(ADD_TIP)
-        self.add_button.clicked.connect(lambda: self.add(focus=True))
+        self.add_button.clicked.connect(lambda: self.add())
         self.note = QLabel()
         self.note.setWordWrap(True)
         self.note.setStyleSheet("font-style: italic;")
@@ -331,22 +341,30 @@ class CharacterEditor(QWidget):
 
     # ---- Editing -------------------------------------------------------------
 
-    def add(self, value=None, focus=False):
+    def _create(self, value=None):
         card = CharacterCard(self, self._suggest, self._on_image)
         if value is not None:
             card.set_value(value)
         self._cards.append(card)
         self._list.addWidget(card)
-        self._refresh()
-        if focus:
-            card.prompt.setFocus()
-        self.changed()
+        return card
 
-    def remove(self, card):
+    def _discard(self, card):
+        card.prompt.hide_popup()  # Also cancels a tag lookup still running.
+        card.negative.hide_popup()
         self._cards.remove(card)
         self._list.removeWidget(card)
         card.setParent(None)
         card.deleteLater()
+
+    def add(self):
+        card = self._create()
+        self._refresh()
+        card.prompt.setFocus()
+        self.changed()
+
+    def remove(self, card):
+        self._discard(card)
         self._refresh()
         self.changed()
 
@@ -371,15 +389,9 @@ class CharacterEditor(QWidget):
 
     def set_characters(self, values):
         for card in list(self._cards):
-            self._cards.remove(card)
-            self._list.removeWidget(card)
-            card.setParent(None)
-            card.deleteLater()
+            self._discard(card)
         for value in values:
-            card = CharacterCard(self, self._suggest, self._on_image)
-            card.set_value(value)
-            self._cards.append(card)
-            self._list.addWidget(card)
+            self._create(value)
         self._refresh()
 
     # ---- Positions -----------------------------------------------------------
@@ -400,18 +412,11 @@ class CharacterEditor(QWidget):
 
     def shown_position(self, card):
         """A character's position as the current model uses it."""
-        x, y = card.position.position()
-        if self.free_positions():
-            return x, y
-        return api.snap_to_grid(x), api.snap_to_grid(y)
+        return api.character_position(self._model, *card.position.position())
 
     def place(self, card, x, y):
         """Move a character (anywhere on V5, to the nearest grid cell before)."""
-        if self.free_positions():
-            x, y = round(x, 3), round(y, 3)
-        else:
-            x, y = api.snap_to_grid(x), api.snap_to_grid(y)
-        card.position.set_position(x, y)
+        card.position.set_position(*api.character_position(self._model, x, y))
 
     def custom_positions(self):
         return bool(self.positions.currentData())

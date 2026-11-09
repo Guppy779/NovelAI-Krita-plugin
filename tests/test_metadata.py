@@ -108,7 +108,7 @@ def test_parse_v5_image():
     assert info.negative == COMMENT["uc"]
     assert info.characters == [api.CharacterPrompt("girl, sweater, smile, ", "frown", 0.4, 0.5)]
     assert info.has_characters and info.use_coords is True
-    assert info.settings == {"steps": 28, "scale": 5.0, "cfg_rescale": 0.2,
+    assert info.settings == {"model": V5, "steps": 28, "scale": 5.0, "cfg_rescale": 0.2,
                              "sampler": "k_euler_ancestral", "noise_schedule": "karras"}
     assert isinstance(info.settings["scale"], float)
     assert info.seed == 1234567890
@@ -152,12 +152,12 @@ def test_split_quality_round_trips_every_model(family):
         family, "nai-diffusion-%s" % family)
     for level in presets.QUALITY_TAGS[family]:
         sent = presets.apply_quality(model, "1girl, smile", level)
-        assert metadata.split_quality(sent) == ("1girl, smile", level)
+        assert metadata.split_quality(sent, model) == ("1girl, smile", level)
 
 
 def test_split_quality_only_takes_tags_at_the_end():
     prompt = "very aesthetic, masterpiece, no text, 1girl"
-    assert metadata.split_quality(prompt) == (prompt, presets.OFF)
+    assert metadata.split_quality(prompt, V5) == (prompt, presets.OFF)
 
 
 @pytest.mark.parametrize("family", sorted(presets.UC_PRESETS))
@@ -167,16 +167,45 @@ def test_split_uc_round_trips_every_preset(family):
     for name, _ in presets.UC_PRESETS[family]:
         for own in ("", "watermark, text"):
             sent, _ = presets.apply_uc(model, "1girl", own, name)
-            own_back, preset = metadata.split_uc(sent)
+            own_back, preset = metadata.split_uc(sent, model)
             assert (own_back, preset) == (own, name)
             assert presets.apply_uc(model, "1girl", own_back, preset)[0] == sent
 
 
 def test_split_uc_keeps_nsfw_without_a_preset():
-    assert metadata.split_uc("nsfw, watermark") == ("nsfw, watermark", presets.NONE)
-    assert metadata.split_uc("watermark") == ("watermark", presets.NONE)
+    assert metadata.split_uc("nsfw, watermark", V5) == ("nsfw, watermark", presets.NONE)
+    assert metadata.split_uc("watermark", V5) == ("watermark", presets.NONE)
     # Text that merely starts like a preset isn't one.
-    assert metadata.split_uc(HEAVY + "ish") == (HEAVY + "ish", presets.NONE)
+    assert metadata.split_uc(HEAVY + "ish", V5) == (HEAVY + "ish", presets.NONE)
+
+
+def test_split_only_takes_what_the_model_can_add_back():
+    v4_full = "nai-diffusion-4-full"
+    human_focus = dict(presets.UC_PRESETS["5-full"])["Human Focus"]
+    assert metadata.split_uc("nsfw, " + human_focus, v4_full) == (
+        "nsfw, " + human_focus, presets.NONE)
+    prompt = "1girl" + presets.QUALITY_TAGS["4-full"][presets.STANDARD]
+    assert metadata.split_quality(prompt, V5) == (prompt, presets.OFF)
+    # Unknown models have no boxes to move anything into.
+    assert metadata.split_quality(prompt, "custom") == (prompt, presets.OFF)
+    assert metadata.split_uc(HEAVY, "custom") == (HEAVY, presets.NONE)
+
+
+def test_split_uc_keeps_nsfw_on_curated_models():
+    # Curated models don't add it back, so it has to stay in the text.
+    text = "nsfw, " + HEAVY
+    assert metadata.split_uc(text, "nai-diffusion-5-curated") == (text, presets.NONE)
+    assert metadata.split_uc(HEAVY, "nai-diffusion-5-curated") == ("", "Heavy")
+
+
+@pytest.mark.parametrize("comment", [
+    json.dumps({"sampler": ["k_euler"], "noise_schedule": {"a": 1}}),
+    "[" * 200000,
+], ids=["wrong types", "absurdly nested"])
+def test_parse_survives_malformed_comments(comment):
+    fields = {"Software": "NovelAI", "Description": "1girl", "Comment": comment}
+    info = metadata.parse(fields)
+    assert info is not None and info.settings == {}
 
 
 # ---- Importing ----------------------------------------------------------------
@@ -190,6 +219,13 @@ IMPORTED = {"prompt": "girl, sweater, smile, ", "negative": "frown", "x": 0.4, "
             "enabled": True}
 
 
+def test_import_keeps_tags_the_panel_model_lacks():
+    prompt = "1girl" + presets.QUALITY_TAGS["4-full"][presets.STANDARD]
+    info = metadata.ImageInfo(prompt=prompt)
+    state = metadata.import_state(info, PANEL, [metadata.PROMPT])
+    assert (state["prompt"], state["quality_tags"]) == (prompt, presets.OFF)
+
+
 def test_import_everything_clean():
     state = metadata.import_state(metadata.parse(FIELDS), PANEL, metadata.PARTS)
     assert state["prompt"] == "1girl, autumn, pumpkin"
@@ -200,7 +236,39 @@ def test_import_everything_clean():
     assert (state["steps"], state["scale"], state["cfg_rescale"]) == (28, 5.0, 0.2)
     assert (state["sampler"], state["noise_schedule"]) == ("k_euler_ancestral", "karras")
     assert (state["seed"], state["random_seed"]) == ("1234567890", False)
-    assert state["model"] == V5  # The model is never changed.
+    assert state["model"] == V5
+
+
+@pytest.mark.parametrize("source, model", [
+    ("NovelAI Diffusion V5 0ADF9AB7", "nai-diffusion-5-full"),
+    ("NovelAI Diffusion V5 DB276663", "nai-diffusion-5-curated"),
+    ("NovelAI Diffusion V4.5 4BDE2A90", "nai-diffusion-4-5-full"),
+    ("NovelAI Diffusion V4 4F49EC75", "nai-diffusion-4-full"),
+    ("Stable Diffusion XL C1E1DE52", "nai-diffusion-3"),
+    ("Stable Diffusion XL 9CC2F394", "nai-diffusion-furry-3"),
+])
+def test_parse_finds_the_model(source, model):
+    assert metadata.parse(dict(FIELDS, Source=source)).settings["model"] == model
+
+
+def test_parse_leaves_an_unknown_model_out():
+    info = metadata.parse(dict(FIELDS, Source="NovelAI Diffusion V9 12345678"))
+    assert "model" not in info.settings
+
+
+def test_import_settings_changes_the_model_before_moving_tags():
+    panel = dict(PANEL, model="nai-diffusion-4-full")
+    state = metadata.import_state(metadata.parse(FIELDS), panel, metadata.PARTS)
+    assert state["model"] == V5
+    assert state["prompt"] == "1girl, autumn, pumpkin"
+    assert state["quality_tags"] == presets.STANDARD
+
+
+def test_import_without_settings_keeps_the_model():
+    panel = dict(PANEL, model="nai-diffusion-4-full")
+    state = metadata.import_state(metadata.parse(FIELDS), panel, [metadata.PROMPT])
+    assert state["model"] == "nai-diffusion-4-full"
+    assert (state["prompt"], state["quality_tags"]) == (COMMENT["prompt"], presets.OFF)
 
 
 def test_import_as_recorded():

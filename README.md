@@ -174,16 +174,17 @@ shows what the image contains. Tick what to import, then click **Import**:
 | Prompt | The prompt box |
 | Undesired content | The undesired content box |
 | Characters | The character prompts, with their positions. They replace your characters, or with **Add to the current characters**, come after them. An image with custom positions turns on **Custom positions**. |
-| Settings | Steps, prompt guidance, guidance rescale, sampler and noise schedule |
+| Settings | The model, steps, prompt guidance, guidance rescale, sampler and noise schedule |
 | Seed | The seed, with **Random** turned off |
 
-The model isn't changed. The dialog remembers your choices.
+The dialog remembers your choices.
 
 NovelAI records the prompt as it was sent, with the quality tags at the end and the
 Undesired Content preset at the start. **Move quality tags and preset into their boxes**
 takes them out of the text and chooses them in the **Quality tags** and **Undesired
-preset** boxes instead. With it off, the text is imported as recorded and both boxes are
-turned off. Either way, generating sends the same request.
+preset** boxes instead, if the selected model has them. If it doesn't, they stay in the
+text so they're still sent. With the option off, the text is imported as recorded and
+both boxes are turned off.
 
 NovelAI stores the prompt in the PNG's text and again, hidden, in the image's
 transparency. The hidden copy survives some programs that remove the text. JPEGs and

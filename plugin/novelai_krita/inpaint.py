@@ -30,6 +30,14 @@ def _white_or_black(image):
     return _from_tight(_tight(image).translate(_ANY_TO_WHITE), image.width(), image.height())
 
 
+def as_alpha(image):
+    """An 8-bit grayscale image as an alpha channel: white is opaque."""
+    # Reinterpret the bytes. (convertToFormat would treat grayscale as a
+    # colour, and give a fully opaque image.)
+    return QImage(image_bytes(image), image.width(), image.height(), image.bytesPerLine(),
+                  QImage.Format.Format_Alpha8).copy()
+
+
 def _scaled(image, width, height, smooth):
     mode = (Qt.TransformationMode.SmoothTransformation if smooth
             else Qt.TransformationMode.FastTransformation)
@@ -106,12 +114,16 @@ def area_of(mask):
     return x, y, min(width, canvas_width - x), min(height, canvas_height - y)
 
 
-def generation_size(mask, max_pixels):
-    """Focus areas are scaled up; the whole canvas goes at its own size if it can."""
-    _, _, width, height = area_of(mask)
+def _size_for(mask, area, max_pixels):
+    _, _, width, height = area
     if mask.focus is not None:
         return im.focus_size(width, height)
     return api.fit_resolution(width, height, max_pixels, upscale=False)
+
+
+def generation_size(mask, max_pixels):
+    """Focus areas are scaled up; the whole canvas goes at its own size if it can."""
+    return _size_for(mask, area_of(mask), max_pixels)
 
 
 def plan(mask, max_pixels):
@@ -121,14 +133,15 @@ def plan(mask, max_pixels):
         return None
     if mask.focus is not None:
         cells = cells.copy(*_focus_crop(mask))
-    width, height = generation_size(mask, max_pixels)
+    area = area_of(mask)
+    width, height = _size_for(mask, area, max_pixels)
     grid_w, grid_h = width // im.CELL, height // im.CELL
     if (grid_w, grid_h) != (cells.width(), cells.height()):
         if grid_w < cells.width() or grid_h < cells.height():
             cells = _white_or_black(_scaled(cells, grid_w, grid_h, True))
         else:
             cells = _scaled(cells, grid_w, grid_h, False)
-    return Plan(area_of(mask), (width, height), cells)
+    return Plan(area, (width, height), cells)
 
 
 def request_mask(a_plan):

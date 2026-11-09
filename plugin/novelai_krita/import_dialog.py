@@ -63,7 +63,6 @@ class ImportDialog(QDialog):
     def __init__(self, info, image, name, parent=None):
         super().__init__(parent)
         self.setWindowTitle("Import from image")
-        self._info = info
 
         thumbnail = QLabel()
         thumbnail.setAlignment(Qt.AlignmentFlag.AlignCenter)

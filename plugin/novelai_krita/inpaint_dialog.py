@@ -3,7 +3,7 @@
 from . import inpaint, inpaint_math as im
 from .qt import (
     QButtonGroup, QColor, QDialog, QDialogButtonBox, QHBoxLayout, QImage, QLabel, QPainter, QPen,
-    QPointF, QRectF, QSlider, Qt, QToolButton, QVBoxLayout, QWidget, event_point, image_bytes,
+    QPointF, QRectF, QSlider, Qt, QToolButton, QVBoxLayout, QWidget, event_point,
 )
 
 BRUSH, ERASER, FOCUS = "brush", "eraser", "focus"
@@ -99,15 +99,12 @@ class _MaskCanvas(QWidget):
 
     def _rebuild_overlay(self):
         cells = inpaint.effective_cells(self.mask)
-        # Reinterpret the bytes: convertToFormat would treat grayscale as opaque.
-        alpha = QImage(image_bytes(cells), cells.width(), cells.height(),
-                       cells.bytesPerLine(), QImage.Format.Format_Alpha8).copy()
         overlay = QImage(cells.width(), cells.height(),
                          QImage.Format.Format_ARGB32_Premultiplied)
         overlay.fill(_MASK_COLOR)
         painter = QPainter(overlay)
         painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_DestinationIn)
-        painter.drawImage(0, 0, alpha)
+        painter.drawImage(0, 0, inpaint.as_alpha(cells))
         painter.end()
         self._overlay = overlay
 
@@ -173,6 +170,7 @@ class _MaskCanvas(QWidget):
     def undo(self):
         if self._undo:
             self.mask.cells, self.mask.focus = self._undo.pop()
+            self.limit_focus()  # The context may have changed since.
             self.changed()
 
     def clear(self):
@@ -204,12 +202,17 @@ class _MaskCanvas(QWidget):
         x, y, width, height = self.mask.focus
         return x <= cell[0] < x + width and y <= cell[1] < y + height
 
-    def _move_focus(self, cell):
+    def limit_focus(self, by_x=0, by_y=0):
+        """Move the focus area, as far as its context allows."""
+        if self.mask.focus is None:
+            return
         x, y, width, height = self.mask.focus
-        x, y = im.moved_focus(x + cell[0] - self._moving[0], y + cell[1] - self._moving[1], width,
-                              height, self.mask.cells.width(), self.mask.cells.height(),
-                              self.mask.context)
+        x, y = im.moved_focus(x + by_x, y + by_y, width, height, self.mask.cells.width(),
+                              self.mask.cells.height(), self.mask.context)
         self.mask.focus = (x, y, width, height)
+
+    def _move_focus(self, cell):
+        self.limit_focus(cell[0] - self._moving[0], cell[1] - self._moving[1])
         self._moving = cell
 
     def mousePressEvent(self, event):
@@ -256,17 +259,16 @@ class _MaskCanvas(QWidget):
             self.update()
 
     def mouseReleaseEvent(self, event):
-        if self._panning is not None:
-            if event.button() in (Qt.MouseButton.MiddleButton, Qt.MouseButton.RightButton):
-                self._panning = None
-                self.setCursor(Qt.CursorShape.CrossCursor)
-            return
-        if self._anchor is not None:
-            focus = self.mask.focus
-            if focus is not None and min(focus[2], focus[3]) < im.MIN_FOCUS_CELLS:
-                self.mask.focus = None
-            self.changed()
-        self._painting = self._moving = self._anchor = None
+        if event.button() in (Qt.MouseButton.MiddleButton, Qt.MouseButton.RightButton):
+            self._panning = None
+            self.setCursor(Qt.CursorShape.CrossCursor)
+        elif event.button() == Qt.MouseButton.LeftButton:
+            if self._anchor is not None:
+                focus = self.mask.focus
+                if focus is not None and min(focus[2], focus[3]) < im.MIN_FOCUS_CELLS:
+                    self.mask.focus = None
+                self.changed()
+            self._painting = self._moving = self._anchor = None
 
     def leaveEvent(self, event):
         self._mouse = None
@@ -366,6 +368,7 @@ class InpaintDialog(QDialog):
     def _slider_moved(self, value):
         if self.canvas.tool == FOCUS:
             self.canvas.mask.context = value * im.CONTEXT_STEP
+            self.canvas.limit_focus()  # Less context may hang off the picture.
             self.canvas.changed()
         else:
             self.canvas.brush = value

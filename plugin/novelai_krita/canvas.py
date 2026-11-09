@@ -9,6 +9,7 @@ from krita import Krita
 from . import inpaint
 from .qt import QBuffer, QByteArray, QColor, QIODevice, QImage, QPainter, Qt, image_bytes
 
+
 @dataclass
 class Region:
     """The part of the document a generation works on (document pixels)."""
@@ -74,10 +75,10 @@ def sharp_resize(image: QImage, width: int, height: int) -> QImage:
     soft image. Falls back to it if Krita can't do the scaling.
     """
     global scaling_problem
+    scaling_problem = ""
     if image.width() == width and image.height() == height:
         return image
     source = image.convertToFormat(QImage.Format.Format_ARGB32)
-    scaling_problem = ""
     try:
         doc = Krita.instance().createDocument(
             source.width(), source.height(), "NovelAI scaling", "RGBA", "U8", "", 72.0)
@@ -110,13 +111,9 @@ def to_base64_png(image: QImage) -> str:
 
 def _apply_alpha(image: QImage, mask: QImage) -> None:
     """Multiply ``image``'s alpha by a grayscale mask of the same size."""
-    # Reinterpret the grayscale bytes as alpha. (convertToFormat would
-    # treat grayscale as opaque and give a fully opaque mask.)
-    alpha = QImage(image_bytes(mask), mask.width(), mask.height(),
-                   mask.bytesPerLine(), QImage.Format.Format_Alpha8).copy()
     painter = QPainter(image)
     painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_DestinationIn)
-    painter.drawImage(0, 0, alpha)
+    painter.drawImage(0, 0, inpaint.as_alpha(mask))
     painter.end()
 
 

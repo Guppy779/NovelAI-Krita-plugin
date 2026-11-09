@@ -12,13 +12,13 @@ def block(event, **fields):
     return "event: %s\ndata: %s\n\n" % (event, data)
 
 
-# Same shape as a real stream captured from image.novelai.net.
+# The shape of a stream from image.novelai.net, with made-up values.
 STREAM = (
-    block("intermediate", samp_ix=0, step_ix=0, gen_id=7960023, sigma=20.3,
+    block("intermediate", samp_ix=0, step_ix=0, gen_id=1234567, sigma=20.3,
           image=base64.b64encode(JPEG).decode())
-    + block("intermediate", samp_ix=0, step_ix=1, gen_id=7960023, sigma=14.2,
+    + block("intermediate", samp_ix=0, step_ix=1, gen_id=1234567, sigma=14.2,
             image=base64.b64encode(JPEG).decode())
-    + block("final", samp_ix=0, gen_id=7960023, image=base64.b64encode(PNG).decode())
+    + block("final", samp_ix=0, gen_id=1234567, image=base64.b64encode(PNG).decode())
 ).encode()
 
 

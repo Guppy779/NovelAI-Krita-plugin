@@ -65,8 +65,13 @@ def moved_focus(x, y, width, height, grid_w, grid_h, context):
     """Where a focus area (cells) may be: its context can hang off the canvas,
     but the part being inpainted stays on it."""
     margin = context_cells(context)
-    return (max(-margin, min(grid_w - width + margin, x)),
-            max(-margin, min(grid_h - height + margin, y)))
+
+    def axis(start, size, grid):
+        # An area too small for its context keeps more than half of itself on.
+        over = min(margin, (size - 1) // 2)
+        return max(-over, min(grid - size + over, start))
+
+    return axis(x, width, grid_w), axis(y, height, grid_h)
 
 
 def focus_crop(x, y, width, height, grid_w, grid_h):

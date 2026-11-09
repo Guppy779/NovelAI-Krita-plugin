@@ -448,8 +448,12 @@ class NovelAIDocker(DockWidget):
             else:
                 width, height = self._generation_size(
                     doc.width(), doc.height(), self.strength.value() < 100)
-            # Character positions are placed on a canvas of the same shape.
-            self.characters.set_aspect(width, height)
+            # Character positions are picked on a canvas of the same shape. A
+            # focus area sends part of it, but they're still picked on all of it.
+            if mask is not None and mask.focus is not None:
+                self.characters.set_aspect(doc.width(), doc.height())
+            else:
+                self.characters.set_aspect(width, height)
             reasons = api.anlas_warnings(
                 width, height, self.steps.value(), self.n_samples.value(),
                 self._model_name(), self._account)
@@ -720,21 +724,23 @@ class NovelAIDocker(DockWidget):
         self._save_last_used()
 
         strength = self.strength.value() / 100.0
-        width, height = doc.width(), doc.height()
+        canvas_width, canvas_height = doc.width(), doc.height()
         mask = self._active_mask(doc)
         plan = inpaint.plan(mask, max_pixels()) if mask is not None else None
         if mask is not None and plan is None:
             self._say("The inpainting mask is empty. Click Edit mask to paint one.")
             return
-        region = canvas.Region(*plan.area) if plan is not None else canvas.Region(0, 0, width, height)
-        canvas_size = width, height
-        width, height = plan.size if plan is not None else self._generation_size(
-            width, height, strength < 1.0)
+        if plan is not None:
+            region = canvas.Region(*plan.area)
+            width, height = plan.size
+        else:
+            region = canvas.Region(0, 0, canvas_width, canvas_height)
+            width, height = self._generation_size(canvas_width, canvas_height, strength < 1.0)
         people = [api.CharacterPrompt(**c) for c in characters]
         if mask is not None and mask.focus is not None:
             for person in people:  # Positions are relative to what's sent.
                 person.x, person.y = inpaint_math.focus_position(
-                    person.x, person.y, canvas_size[0], canvas_size[1], plan.area)
+                    person.x, person.y, canvas_width, canvas_height, plan.area)
         params = api.GenerationParams(
             prompt=prompt,
             negative_prompt=self.negative.toPlainText(),
@@ -764,7 +770,7 @@ class NovelAIDocker(DockWidget):
             if not settings.get_bool("inpaint_full_image"):
                 region.mask = inpaint.blend_alpha(plan)
             backdrop = canvas.preview_backdrop(doc)
-            composer = lambda image: canvas.compose_preview(image, region, backdrop, canvas_size[0])
+            composer = lambda image: canvas.compose_preview(image, region, backdrop, canvas_width)
         if self.random_seed.isChecked():
             self.seed.setText(str(seed))  # Show which random seed was used.
 
@@ -797,7 +803,7 @@ class NovelAIDocker(DockWidget):
         self._say(message)
         self.refresh_account()
 
-    def _on_preview(self, event, steps, composer=None):
+    def _on_preview(self, event, steps, composer):
         """Show an in-progress image from the stream (first image of a batch)."""
         if event.sample != 0 or self._job is None:
             return
@@ -807,8 +813,8 @@ class NovelAIDocker(DockWidget):
         self.preview.view.set_image(composer(image) if composer is not None else image)
         self._say("Generating... step %d of %d" % (event.step + 1, steps))
 
-    def _on_images(self, images, doc, region, seed, prompt, composer=None,
-                   characters=(), custom_positions=False):
+    def _on_images(self, images, doc, region, seed, prompt, composer, characters,
+                   custom_positions):
         self._job = None
         self._set_busy(False)
         self.refresh_account()  # Anlas / V5 allowance may have changed.

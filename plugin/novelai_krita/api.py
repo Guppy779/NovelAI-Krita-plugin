@@ -73,7 +73,7 @@ def anlas_warnings(width: int, height: int, steps: int, n_samples: int,
     if account is not None and account.tier is not None and not account.is_opus:
         return ["free generations need an Opus plan (yours: %s)" % account.plan_name]
     reasons = []
-    if (account is not None and "diffusion-5" in model
+    if (account is not None and is_v5(model)
             and (account.v5_unavailable or account.v5_percent == 0)):
         reasons.append("your V5 Opus allowance is used up")
     if width * height > FREE_MAX_PIXELS:
@@ -96,6 +96,10 @@ def is_v4(model: str) -> bool:
     newer models, since new NovelAI models keep the V4 structure.
     """
     return presets.model_key(model) not in ("3", "furry-3")
+
+
+def is_v5(model: str) -> bool:
+    return "diffusion-5" in model
 
 
 def inpainting_model(model: str) -> str:
@@ -182,7 +186,7 @@ def position_name(x: float, y: float) -> str:
 
 def free_positions(model: str) -> bool:
     """True if the model places characters anywhere (V5), not only on the grid."""
-    return "diffusion-5" in model
+    return is_v5(model)
 
 
 def character_position(model: str, x: float, y: float) -> Tuple[float, float]:
@@ -263,12 +267,12 @@ def build_payload(p: GenerationParams) -> dict:
         "negative_prompt": negative,
     }
 
-    if "diffusion-5" in model:  # The site's default for models with transparency.
+    if is_v5(model):  # The site's default for models with transparency.
         params["straight_alpha"] = True
 
-    if is_v4(p.model):
+    if is_v4(model):
         # "native" is V3 only, and V5 always uses karras.
-        if params["noise_schedule"] == "native" or "diffusion-5" in model:
+        if params["noise_schedule"] == "native" or is_v5(model):
             params["noise_schedule"] = "karras"
         # Characters as the NovelAI site sends them: in "characterPrompts",
         # and as character captions next to the base prompt. Quality tags and
@@ -320,7 +324,7 @@ def build_payload(p: GenerationParams) -> dict:
             "noise": float(p.noise),
             "extra_noise_seed": max(0, int(p.seed) - 1),
         })
-        if is_v4(p.model):
+        if is_v4(model):
             # As the NovelAI site sends it: inpaint strength below 100% goes in
             # the nested "img2img" object (the API spec: "used by inpaint");
             # at 100% the object is left out.

@@ -76,6 +76,30 @@ def test_what_is_inpainted_stays_on_the_canvas():
     assert inner[0] + inner[2] == 100 and inner[1] + inner[3] == 150
 
 
+@pytest.mark.parametrize("target", [(-500, -500), (500, 500), (500, 20), (-500, 20), (20, 500)])
+@pytest.mark.parametrize("context", [im.CONTEXT_MIN, im.CONTEXT_MAX])
+@pytest.mark.parametrize("size", [(4, 4), (10, 10), (24, 24), (25, 60), (100, 150)])
+def test_focus_area_never_leaves_the_canvas(target, context, size):
+    x, y = im.moved_focus(*target, *size, 100, 150, context)
+    _, _, width, height = im.focus_crop(x, y, *size, 100, 150)
+    assert width > 0 and height > 0
+    assert im.focus_size(width * im.CELL, height * im.CELL)  # Can be generated.
+    # More than half of it is still on the canvas.
+    assert -size[0] / 2 < x < 100 - size[0] / 2 and -size[1] / 2 < y < 150 - size[1] / 2
+
+
+def test_small_focus_area_hangs_off_less_than_its_context():
+    # 10 cells across with 12 cells of context: only 4 may hang off.
+    assert im.moved_focus(-50, -50, 10, 10, 100, 150, 96) == (-4, -4)
+    assert im.moved_focus(500, 500, 10, 10, 100, 150, 96) == (94, 144)
+
+
+def test_less_context_brings_the_focus_area_back():
+    x, y = im.moved_focus(-50, 500, 40, 40, 100, 150, 96)
+    assert (x, y) == (-12, 122)
+    assert im.moved_focus(x, y, 40, 40, 100, 150, 32) == (-4, 114)
+
+
 def test_focus_crop_on_the_canvas_is_the_area():
     assert im.focus_crop(10, 20, 40, 30, 100, 150) == (10, 20, 40, 30)
 

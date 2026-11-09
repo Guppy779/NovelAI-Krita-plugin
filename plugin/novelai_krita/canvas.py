@@ -38,6 +38,12 @@ def active_document():
     return Krita.instance().activeDocument()
 
 
+def main_window():
+    """Krita's main window as a Qt widget, or None."""
+    window = Krita.instance().activeWindow()
+    return window.qwindow() if window is not None else None
+
+
 def has_selection(doc) -> bool:
     selection = doc.selection() if doc is not None else None
     return selection is not None and selection.width() > 0 and selection.height() > 0
@@ -163,7 +169,7 @@ def compose_result(result: QImage, region: Region, sent: Optional[QImage] = None
     return image.convertToFormat(QImage.Format.Format_ARGB32)
 
 
-def insert_layer(doc, image: QImage, x: int, y: int, name: str, visible: bool = True):
+def insert_layer(doc, image: QImage, x: int, y: int, name: str):
     """Add ``image`` (ARGB32) as a new paint layer above the active layer."""
     root = doc.rootNode()
     active = doc.activeNode()
@@ -174,7 +180,6 @@ def insert_layer(doc, image: QImage, x: int, y: int, name: str, visible: bool = 
     node = doc.createNode(name, "paintlayer")
     parent.addChildNode(node, active)
     write_pixels(doc, node, image, x, y)
-    node.setVisible(visible)
     doc.refreshProjection()
     return node
 
@@ -190,30 +195,6 @@ def write_pixels(doc, node, image: QImage, x: int, y: int) -> None:
     node.setPixelData(QByteArray(image_bytes(image)), x, y, image.width(), image.height())
     if not native:
         node.setColorSpace(doc.colorModel(), doc.colorDepth(), doc.colorProfile())
-
-
-PREVIEW_LAYER_NAME = "NovelAI preview"
-
-
-def show_preview(doc, node, image: QImage, region: Region):
-    """Show an in-progress image on the canvas in a temporary layer.
-
-    Creates the layer the first time (``node`` None) and updates it after
-    that; returns the layer. Previews are cut to the selection, if any.
-    """
-    layer = compose_result(image, region)
-    if node is None:
-        return insert_layer(doc, layer, region.x, region.y, PREVIEW_LAYER_NAME)
-    write_pixels(doc, node, layer, region.x, region.y)
-    doc.refreshProjection()
-    return node
-
-
-def remove_preview(doc, node) -> None:
-    if node is None or not document_is_open(doc):
-        return  # A closed document took its layers with it.
-    node.remove()
-    doc.refreshProjection()
 
 
 def read_annotation(doc, key: str) -> bytes:

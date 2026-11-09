@@ -3,7 +3,7 @@
 Generate, refine and inpaint images with [NovelAI](https://novelai.net) without leaving Krita.
 The plugin adds a panel (a docker), in the spirit of
 [Krita AI Diffusion](https://github.com/Acly/krita-ai-diffusion), that sends your prompt, and
-when needed your canvas and selection, to NovelAI. Each result arrives as a new layer.
+when needed your canvas and selection, to NovelAI. Each result opens in a preview window, where you add the ones you like as layers.
 
 This is an unofficial, community-made plugin. It isn't affiliated with or endorsed by NovelAI
 or Anlatan.
@@ -14,7 +14,8 @@ or Anlatan.
 - **Refine** the whole canvas or a selection with image to image.
 - **Inpaint** a selection the same way the NovelAI site does, at full resolution and blended
   into the surrounding canvas.
-- **Live preview** that shows the image forming on the canvas while it generates.
+- **A preview window** that shows the image forming while it generates, with **Generate**
+  and **Add as layer** buttons, so you can keep trying until you get one you like.
 - **Tag autocomplete** in both prompt boxes. Typing Japanese also suggests the matching
   English tags.
 - **Coloured prompt weights**, like the site: `{ }`, `[ ]` and `1.2::tag::` show at a glance.
@@ -70,7 +71,8 @@ tick **NovelAI Image Generation**, and restart Krita again.
 1. Open or create a document. Its aspect ratio sets the shape of the image.
 2. Pick a model, write a prompt (tags such as `1girl, silver hair, night sky`), and optionally
    add undesired content.
-3. Click **Generate**. The result is added as a new layer above the active layer.
+3. Click **Generate**. The result appears in the preview window. Click **Add as layer** to
+   put it above the active layer, or **Generate** again for another one.
 
 ### Settings per document
 
@@ -212,9 +214,10 @@ To keep generating for free on Opus, keep **Settings → Max generation size** a
 
 ### History
 
-Each result is also kept in the history at the bottom of the panel.
+Each result is kept in the history at the bottom of the preview window. Click one to see it
+large. The **Preview** button next to **Generate** reopens the window if you've closed it.
 
-- **Double-click** a result to add it as a layer again.
+- **Double-click** a result to add it as a layer.
 - **Right-click** a result to:
   - save it to disk, as the original PNG NovelAI sent, with the prompt and settings embedded
   - reuse its seed or prompt
@@ -235,7 +238,7 @@ Click **Settings** in the panel:
 | Selection context | 20% | How much of the canvas around a selection is sent, relative to the selection's size. |
 | Autocomplete | on | Suggest tags while you type. |
 | Inpainting: Add the whole image as the layer | off | Use NovelAI's whole image as the layer instead of only the changed pixels. |
-| Live preview | on | Show each step on the canvas in a temporary *NovelAI preview* layer while generating (V4 and newer). |
+| Live preview | on | Show each step in the preview window while generating (V4 and newer). |
 | History size | 50 | How many results the history keeps. The oldest are dropped first. |
 
 ## Privacy
@@ -287,6 +290,7 @@ plugin/
     doc_state.py            Per-document settings stored in the .kra (plain Python, tested)
     metadata.py             Reading NovelAI's prompt and settings from images (plain Python, tested)
     import_dialog.py        The Import from image dialog
+    preview.py              The preview window and result history
     prompt_edit.py          Prompt box with tag autocomplete popup
     tags.py                 Finding the tag at the cursor (plain Python, tested)
     weights.py              Where a prompt is weighted, for colouring it (plain Python, tested)

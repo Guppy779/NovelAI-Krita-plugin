@@ -84,12 +84,11 @@ class SettingsDialog(QDialog):
             "(often the whole canvas), covering everything below it.")
         form.addRow("Inpainting", self.full_image)
 
-        self.live_preview = QCheckBox("Show a live preview on the canvas while generating")
+        self.live_preview = QCheckBox("Show the image forming in the preview window")
         self.live_preview.setChecked(settings.get_bool("live_preview"))
         self.live_preview.setToolTip(
-            "Shows each step in a temporary 'NovelAI preview' layer, which is\n"
-            "replaced by the result when it's done. V4 and newer models only.\n"
-            "Turn off to generate without previews (no temporary layer).")
+            "Shows each step while generating. V4 and newer models only.\n"
+            "Off: the preview window waits for the finished image.")
         form.addRow("Live preview", self.live_preview)
 
         self.history_limit = QSpinBox()
@@ -97,7 +96,7 @@ class SettingsDialog(QDialog):
         self.history_limit.setSuffix(" results")
         self.history_limit.setValue(max(1, settings.get_int("history_limit")))
         self.history_limit.setToolTip(
-            "How many results the history at the bottom of the panel keeps in\n"
+            "How many results the history in the preview window keeps in\n"
             "memory. The oldest are dropped first; layers already added stay.")
         form.addRow("History size", self.history_limit)
 

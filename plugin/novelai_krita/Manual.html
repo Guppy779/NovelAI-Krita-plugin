@@ -55,10 +55,13 @@ image per request (V5 models also use the V5 allowance). When the next generatio
 would cost Anlas (over one of these limits, V5 allowance used up, or a plan
 without free generations), an orange <b>Costs Anlas</b> note under the mode
 description says why.</p>
-<h4>Live preview</h4>
-<p>With V4 and newer models, each generation step is shown in a temporary
-<b>NovelAI preview</b> layer, which is replaced by the finished result (or removed
-if you cancel). Turn it off in Settings &rarr; Live preview.</p>
+<h4>Preview window</h4>
+<p>Generating opens a window that stays above Krita and doesn't block it. With V4
+and newer models it shows each step as the image forms (turn that off in Settings
+&rarr; Live preview). Nothing is added to your document until you click <b>Add as
+layer</b>. Click <b>Generate</b> again for another image; with <b>Random</b> seed on,
+each one is different. The <b>Preview</b> button next to <b>Generate</b> reopens the
+window if you've closed it.</p>
 <h4>Tag autocomplete</h4>
 <p>While you type in either prompt box, NovelAI suggests tags for the word at
 the cursor (free, no Anlas). Use Up/Down to choose, <b>Tab</b> or <b>Enter</b>
@@ -102,8 +105,8 @@ few pixels past the selection, where NovelAI blends the new content into the
 original, the same as on the NovelAI site. To get NovelAI's whole image as the
 layer instead, turn on <b>Inpainting: Add the whole image as the layer</b> in
 Settings (the layer then covers everything below it).</p>
-<p>Every result is added as a new layer above the active layer and kept in the
-history at the bottom of the docker. Double-click a thumbnail to add it again.
+<p>Every result is kept in the history at the bottom of the preview window. Click a
+thumbnail to see it large, or double-click to add it as a new layer above the active layer.
 Right-click it to save it to disk, reuse its seed or prompt, or remove it from
 the history. Saving writes the file exactly as NovelAI sent it, including the
 prompt and settings NovelAI embeds in the PNG.</p>

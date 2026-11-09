@@ -33,6 +33,7 @@ DEFAULTS = {
     "inpaint_full_image": "false",
     "live_preview": "true",
     "history_limit": "50",
+    "preview_geometry": "",
     # What "Import from image" imports (metadata.PARTS, plus "clean").
     "import_parts": "characters,clean,negative,prompt,seed,settings",
 }

@@ -1,4 +1,4 @@
-"""The NovelAI docker: prompt, parameters, Generate button and result history."""
+"""The NovelAI docker: prompt, parameters and the Generate button."""
 
 import os
 import time
@@ -10,16 +10,15 @@ from . import api, canvas, doc_state, metadata, presets, settings
 from .characters import CharacterEditor
 from .client import NovelAIClient
 from .import_dialog import ImportDialog, LABELS as IMPORT_LABELS, read_image
+from .preview import PreviewWindow, THUMBNAIL_SIZE
 from .prompt_edit import PromptEdit
 from .settings_dialog import SettingsDialog, max_pixels
 from .qt import (
-    QAbstractItemView, QCheckBox, QComboBox, QDoubleSpinBox, QFileDialog, QFormLayout,
-    QFrame, QHBoxLayout, QIcon, QImage, QLabel, QLineEdit, QListWidget, QListWidgetItem,
-    QMenu, QMessageBox, QPixmap, QProgressBar, QPushButton, QScrollArea, QSize, QSlider,
-    QSpinBox, Qt, QTimer, QToolButton, QVBoxLayout, QWidget, ignore_wheel,
+    QCheckBox, QComboBox, QDoubleSpinBox, QFileDialog, QFormLayout, QFrame, QHBoxLayout,
+    QIcon, QImage, QLabel, QLineEdit, QListWidgetItem, QMenu, QMessageBox, QPixmap,
+    QProgressBar, QPushButton, QScrollArea, QSlider, QSpinBox, Qt, QTimer, QToolButton,
+    QVBoxLayout, QWidget, ignore_wheel,
 )
-
-THUMBNAIL_SIZE = 96
 
 
 @dataclass
@@ -58,8 +57,7 @@ class NovelAIDocker(DockWidget):
         self._started = 0.0
         self._results = {}  # History item id -> Result.
         self._next_id = 0
-        self._preview = None  # Temporary "NovelAI preview" layer while streaming.
-        self._preview_doc = None
+        self.preview = PreviewWindow()  # Shows the image forming, and the results.
         # Each document keeps its own prompt and settings (see doc_state.py).
         self._doc = None  # The document the panel currently shows.
         self._loading = False  # Filling the panel from a document's settings.
@@ -107,11 +105,11 @@ class NovelAIDocker(DockWidget):
         self.prompt.setPlaceholderText(
             "Prompt, e.g. 1girl, silver hair, night sky, city lights\n"
             "Drop a NovelAI image here to import its prompt and settings.")
-        self.prompt.setMinimumHeight(70)
+        self.prompt.setMinimumHeight(150)
         layout.addWidget(self.prompt, 2)
         self.negative = PromptEdit("", self._suggest_tags, on_image=self.import_image)
         self.negative.setPlaceholderText("Undesired content (added after the preset)")
-        self.negative.setMinimumHeight(40)
+        self.negative.setMinimumHeight(80)
         layout.addWidget(self.negative, 1)
 
         # Character prompts (V4 and newer).
@@ -241,9 +239,14 @@ class NovelAIDocker(DockWidget):
         self.cancel_button = QPushButton("Cancel")
         self.cancel_button.clicked.connect(self.cancel)
         self.cancel_button.setVisible(False)
+        preview_button = QToolButton()
+        preview_button.setText("Preview")
+        preview_button.setToolTip("Open the preview window with your results.")
+        preview_button.clicked.connect(self._show_preview)
         row = QHBoxLayout()
         row.addWidget(self.generate_button, 1)
         row.addWidget(self.cancel_button)
+        row.addWidget(preview_button)
         layout.addLayout(row)
 
         self.progress = QProgressBar()
@@ -257,19 +260,14 @@ class NovelAIDocker(DockWidget):
         self.status.setWordWrap(True)
         layout.addWidget(self.status)
 
-        # History of results.
-        self.history = QListWidget()
-        self.history.setViewMode(QListWidget.ViewMode.IconMode)
-        self.history.setIconSize(QSize(THUMBNAIL_SIZE, THUMBNAIL_SIZE))
-        self.history.setResizeMode(QListWidget.ResizeMode.Adjust)
-        self.history.setMovement(QListWidget.Movement.Static)
-        self.history.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
-        self.history.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        # The preview window's controls and history of results.
+        self.history = self.preview.history
         self.history.customContextMenuRequested.connect(self._history_menu)
         self.history.itemDoubleClicked.connect(lambda item: self._insert(self._result(item)))
-        self.history.setToolTip("Double-click a result to add it again as a new layer.")
-        self.history.setMinimumHeight(THUMBNAIL_SIZE + 16)
-        layout.addWidget(self.history, 2)
+        self.history.currentItemChanged.connect(self._show_current)
+        self.preview.generate_button.clicked.connect(self.generate)
+        self.preview.cancel_button.clicked.connect(self.cancel)
+        self.preview.add_button.clicked.connect(self._add_current)
 
         # The panel scrolls when the docker is too short for it (e.g. with
         # several characters).
@@ -444,6 +442,11 @@ class NovelAIDocker(DockWidget):
         self.generate_button.setEnabled(not busy)
         self.cancel_button.setVisible(busy)
         self.progress.setVisible(busy)
+        self.preview.set_busy(busy)
+
+    def _say(self, text):
+        self.status.setText(text)
+        self.preview.status.setText(text)
 
     # ---- Per-document settings ---------------------------------------------
 
@@ -555,6 +558,8 @@ class NovelAIDocker(DockWidget):
             if key not in doc_state.PROMPTS:
                 settings.set(key, value)
         settings.set("show_advanced", self.advanced_toggle.isChecked())
+        if self.preview.isVisible():
+            self.preview.save_geometry()
 
     def import_image(self, path):
         """Import the prompt and settings recorded in a NovelAI image."""
@@ -562,10 +567,10 @@ class NovelAIDocker(DockWidget):
         try:
             info, image = read_image(path)
         except OSError as exc:
-            self.status.setText("Could not read %s: %s." % (name, exc.strerror or exc))
+            self._say("Could not read %s: %s." % (name, exc.strerror or exc))
             return
         if info is None:
-            self.status.setText(
+            self._say(
                 "%s has no NovelAI prompt or settings in it. Images re-saved by other "
                 "programs or websites often lose them." % name)
             return
@@ -583,7 +588,7 @@ class NovelAIDocker(DockWidget):
         imported = [IMPORT_LABELS[part].lower() for part in parts]
         if len(imported) > 1:
             imported[-2:] = ["%s and %s" % (imported[-2], imported[-1])]
-        self.status.setText("Imported the %s from %s." % (", ".join(imported), name))
+        self._say("Imported the %s from %s." % (", ".join(imported), name))
 
     def open_settings(self):
         SettingsDialog(self._client, self).exec()
@@ -620,25 +625,25 @@ class NovelAIDocker(DockWidget):
             return
         doc = canvas.active_document()
         if doc is None:
-            self.status.setText("Open or create a document first.")
+            self._say("Open or create a document first.")
             return
         self._follow_document()  # Use this document's own settings.
         if not self._model_name():
-            self.status.setText("Choose or type a model first.")
+            self._say("Choose or type a model first.")
             return
         prompt = self.prompt.toPlainText().strip()
         if not prompt:
-            self.status.setText("Write a prompt first.")
+            self._say("Write a prompt first.")
             return
         problem = self.characters.problem()
         if problem:
-            self.status.setText(problem)
+            self._say(problem)
             return
         characters = self.characters.characters()
         custom_positions = self.characters.custom_positions()
         token = settings.get("token")
         if not token:
-            self.status.setText("Add your NovelAI API token in Settings.")
+            self._say("Add your NovelAI API token in Settings.")
             self.open_settings()
             token = settings.get("token")
             if not token:
@@ -646,7 +651,7 @@ class NovelAIDocker(DockWidget):
         try:
             seed = self._seed()
         except ValueError as exc:
-            self.status.setText(str(exc))
+            self._say(str(exc))
             return
         self._save_last_used()
 
@@ -691,16 +696,15 @@ class NovelAIDocker(DockWidget):
             self.seed.setText(str(seed))  # Show which random seed was used.
 
         payload = api.build_payload(params)
-        self.status.setText("Generating %d x %d (%s)..." % (width, height, params.action))
+        self._say("Generating %d x %d (%s)..." % (width, height, params.action))
         self._started = time.monotonic()
         self._set_busy(True)
+        self._show_preview()
         on_images = lambda images: self._on_images(
             images, doc, region, seed, prompt, sent_image, characters, custom_positions)
         if settings.get_bool("live_preview") and api.supports_streaming(params.model):
-            self._preview_doc = doc
             self._job = self._client.generate_stream(
-                token, payload,
-                lambda event: self._on_preview(event, doc, region, params.steps),
+                token, payload, lambda event: self._on_preview(event, params.steps),
                 on_images, self._on_error)
         else:
             self._job = self._client.generate(token, payload, on_images, self._on_error)
@@ -709,51 +713,41 @@ class NovelAIDocker(DockWidget):
         if self._job is not None:
             self._job.cancel()
             self._job = None
-        self._clear_preview()
         self._set_busy(False)
-        self.status.setText("Cancelled.")
+        self._show_current()
+        self._say("Cancelled.")
 
     def _on_error(self, message):
         self._job = None
-        self._clear_preview()
         self._set_busy(False)
-        self.status.setText(message)
+        self._show_current()
+        self._say(message)
         self.refresh_account()
 
-    def _on_preview(self, event, doc, region, steps):
+    def _on_preview(self, event, steps):
         """Show an in-progress image from the stream (first image of a batch)."""
-        if event.sample != 0 or self._job is None or not canvas.document_is_open(doc):
+        if event.sample != 0 or self._job is None:
             return
         image = QImage.fromData(event.image)
         if image.isNull():
             return
-        try:
-            self._preview = canvas.show_preview(doc, self._preview, image, region)
-        except Exception:  # A preview must never break the generation itself.
-            self._preview = None
-            return
-        self.status.setText("Generating... step %d of %d" % (event.step + 1, steps))
-
-    def _clear_preview(self):
-        try:
-            canvas.remove_preview(self._preview_doc, self._preview)
-        finally:
-            self._preview = None
-            self._preview_doc = None
+        self.preview.view.set_image(image)
+        self._say("Generating... step %d of %d" % (event.step + 1, steps))
 
     def _on_images(self, images, doc, region, seed, prompt, sent_image=None,
                    characters=(), custom_positions=False):
         self._job = None
-        self._clear_preview()
         self._set_busy(False)
         self.refresh_account()  # Anlas / V5 allowance may have changed.
         elapsed = time.monotonic() - self._started
         if not images:
-            self.status.setText("NovelAI returned no images.")
+            self._show_current()
+            self._say("NovelAI returned no images.")
             return
         if not canvas.document_is_open(doc):
             doc = None
 
+        added = 0
         for index, (data, image_seed) in enumerate(images):
             image = QImage.fromData(data)
             if image.isNull():
@@ -765,12 +759,31 @@ class NovelAIDocker(DockWidget):
                 prompt=prompt, document=doc, original=data,
                 characters=list(characters), custom_positions=custom_positions)
             self._add_history(result)
-            if doc is not None:
-                self._insert(result, visible=(index == 0))
+            added += 1
 
-        self.status.setText("Done in %.1f s (seed %d)." % (elapsed, seed))
+        # Newest first, so the batch's first image is the furthest along. It
+        # may be gone already if the history is shorter than the batch.
+        if added:
+            self.history.setCurrentRow(min(added, self.history.count()) - 1)
+        self._show_current()
+        self._say("Done in %.1f s (seed %d)." % (elapsed, seed))
 
     # ---- Results ----------------------------------------------------------
+
+    def _show_preview(self):
+        self.preview.open(canvas.main_window())
+
+    def _show_current(self, *_):
+        """Show the result picked in the history, as NovelAI sent it."""
+        item = self.history.currentItem()
+        self.preview.view.set_image(
+            QImage.fromData(self._result(item).original) if item is not None else None)
+        self.preview.add_button.setEnabled(item is not None)
+
+    def _add_current(self):
+        item = self.history.currentItem()
+        if item is not None:
+            self._insert(self._result(item))
 
     def _add_history(self, result):
         thumb = result.image.scaled(
@@ -811,7 +824,8 @@ class NovelAIDocker(DockWidget):
             return
         self.history.clear()
         self._results.clear()
-        self.status.setText("History cleared.")
+        self._show_current()
+        self._say("History cleared.")
 
     def _save(self, result):
         """Save NovelAI's original file, which keeps its embedded prompt info."""
@@ -828,19 +842,20 @@ class NovelAIDocker(DockWidget):
             with open(path, "wb") as file:
                 file.write(result.original)
         except OSError as exc:
-            self.status.setText("Could not save the image: %s" % exc)
+            self._say("Could not save the image: %s" % exc)
             return
         settings.set("save_dir", os.path.dirname(path))
-        self.status.setText("Saved %s" % path)
+        self._say("Saved %s" % path)
 
-    def _insert(self, result, visible=True):
+    def _insert(self, result):
         doc = result.document if canvas.document_is_open(result.document) else None
         doc = doc or canvas.active_document()
         if doc is None:
-            self.status.setText("Open a document to add the result.")
+            self._say("Open a document to add the result.")
             return
         name = "NovelAI %d: %s" % (result.seed, result.prompt[:40])
-        canvas.insert_layer(doc, result.image, result.x, result.y, name, visible)
+        canvas.insert_layer(doc, result.image, result.x, result.y, name)
+        self._say("Added as a new layer.")
 
     def _history_menu(self, pos):
         item = self.history.itemAt(pos)

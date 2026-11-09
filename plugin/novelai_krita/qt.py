@@ -6,8 +6,8 @@ which work with both bindings.
 
 try:
     from PyQt5.QtCore import (  # noqa: F401
-        QBuffer, QByteArray, QIODevice, QModelIndex, QObject, QPointF, QRectF, QSize, QTimer,
-        QUrl, Qt,
+        QBuffer, QByteArray, QEvent, QIODevice, QModelIndex, QObject, QPointF, QRectF, QSize,
+        QTimer, QUrl, Qt,
     )
     from PyQt5.QtGui import (  # noqa: F401
         QColor, QFont, QIcon, QImage, QPainter, QPen, QPixmap, QStandardItem,
@@ -17,7 +17,8 @@ try:
         QNetworkAccessManager, QNetworkReply, QNetworkRequest,
     )
     from PyQt5.QtWidgets import (  # noqa: F401
-        QAbstractItemView, QCheckBox, QComboBox, QCompleter, QDialog, QDialogButtonBox,
+        QAbstractItemView, QAbstractSpinBox, QCheckBox, QComboBox, QCompleter, QDialog,
+        QDialogButtonBox,
         QDoubleSpinBox, QFileDialog, QFormLayout, QFrame, QHBoxLayout,
         QLabel, QLineEdit, QListWidget, QListWidgetItem, QMenu, QMessageBox,
         QPlainTextEdit, QProgressBar, QPushButton, QScrollArea, QSlider, QSpinBox,
@@ -25,8 +26,8 @@ try:
     )
 except ImportError:
     from PyQt6.QtCore import (  # noqa: F401
-        QBuffer, QByteArray, QIODevice, QModelIndex, QObject, QPointF, QRectF, QSize, QTimer,
-        QUrl, Qt,
+        QBuffer, QByteArray, QEvent, QIODevice, QModelIndex, QObject, QPointF, QRectF, QSize,
+        QTimer, QUrl, Qt,
     )
     from PyQt6.QtGui import (  # noqa: F401
         QColor, QFont, QIcon, QImage, QPainter, QPen, QPixmap, QStandardItem,
@@ -36,7 +37,8 @@ except ImportError:
         QNetworkAccessManager, QNetworkReply, QNetworkRequest,
     )
     from PyQt6.QtWidgets import (  # noqa: F401
-        QAbstractItemView, QCheckBox, QComboBox, QCompleter, QDialog, QDialogButtonBox,
+        QAbstractItemView, QAbstractSpinBox, QCheckBox, QComboBox, QCompleter, QDialog,
+        QDialogButtonBox,
         QDoubleSpinBox, QFileDialog, QFormLayout, QFrame, QHBoxLayout,
         QLabel, QLineEdit, QListWidget, QListWidgetItem, QMenu, QMessageBox,
         QPlainTextEdit, QProgressBar, QPushButton, QScrollArea, QSlider, QSpinBox,
@@ -49,3 +51,20 @@ def image_bytes(image):
     ptr = image.constBits()
     ptr.setsize(image.sizeInBytes())
     return ptr.asstring()
+
+
+class _PassWheel(QObject):
+    def eventFilter(self, watched, event):
+        if event.type() == QEvent.Type.Wheel:
+            event.ignore()  # Qt then offers it to the parent, which scrolls.
+            return True
+        return False
+
+
+def ignore_wheel(root):
+    """Stop the combo boxes, number boxes and sliders under ``root`` from
+    changing when the mouse wheel passes over them on the way down a panel."""
+    passer = _PassWheel(root)
+    for kind in (QComboBox, QAbstractSpinBox, QSlider):
+        for widget in root.findChildren(kind):
+            widget.installEventFilter(passer)

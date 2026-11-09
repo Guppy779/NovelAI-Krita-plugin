@@ -16,7 +16,7 @@ from .qt import (
     QAbstractItemView, QCheckBox, QComboBox, QDoubleSpinBox, QFileDialog, QFormLayout,
     QFrame, QHBoxLayout, QIcon, QImage, QLabel, QLineEdit, QListWidget, QListWidgetItem,
     QMenu, QMessageBox, QPixmap, QProgressBar, QPushButton, QScrollArea, QSize, QSlider,
-    QSpinBox, Qt, QTimer, QToolButton, QVBoxLayout, QWidget,
+    QSpinBox, Qt, QTimer, QToolButton, QVBoxLayout, QWidget, ignore_wheel,
 )
 
 THUMBNAIL_SIZE = 96
@@ -278,6 +278,7 @@ class NovelAIDocker(DockWidget):
         scroll.setFrameShape(QFrame.Shape.NoFrame)
         scroll.setWidget(root)
         self.setWidget(scroll)
+        ignore_wheel(root)
 
         for signal in (
                 self.prompt.textChanged, self.negative.textChanged,

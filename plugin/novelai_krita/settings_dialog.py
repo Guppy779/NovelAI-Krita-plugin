@@ -3,7 +3,7 @@
 from . import api, settings
 from .qt import (
     QCheckBox, QDialog, QDialogButtonBox, QFormLayout, QHBoxLayout, QLabel, QLineEdit,
-    QPushButton, QSpinBox, Qt, QVBoxLayout,
+    QPushButton, QSpinBox, Qt, QVBoxLayout, ignore_wheel,
 )
 from .version import __version__
 
@@ -115,6 +115,7 @@ class SettingsDialog(QDialog):
         layout.addLayout(form)
         layout.addWidget(about)
         layout.addWidget(buttons)
+        ignore_wheel(self)
 
     def _test(self):
         token = self.token.text().strip()

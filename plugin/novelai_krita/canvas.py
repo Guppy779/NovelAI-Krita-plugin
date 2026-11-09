@@ -6,21 +6,8 @@ from typing import Optional
 
 from krita import Krita
 
-from . import api
+from . import inpaint
 from .qt import QBuffer, QByteArray, QColor, QIODevice, QImage, QPainter, Qt, image_bytes
-
-# Lookup table that turns every non-black mask pixel white, e.g. so that
-# partly selected (feathered) pixels are regenerated too.
-_BINARIZE = bytes([0] + [255] * 255)
-
-
-def _binarize(image: QImage) -> QImage:
-    """A pure black and white 8-bit grayscale copy of ``image``."""
-    gray = image.convertToFormat(QImage.Format.Format_Grayscale8)
-    data = image_bytes(gray).translate(_BINARIZE)
-    return QImage(data, gray.width(), gray.height(), gray.bytesPerLine(),
-                  QImage.Format.Format_Grayscale8).copy()
-
 
 @dataclass
 class Region:
@@ -30,7 +17,7 @@ class Region:
     y: int
     width: int
     height: int
-    # Selection inside this region as an 8-bit grayscale image, or None.
+    # Inpainting: how much of the result to keep (8-bit grayscale of any size).
     mask: Optional[QImage] = None
 
 
@@ -49,28 +36,14 @@ def has_selection(doc) -> bool:
     return selection is not None and selection.width() > 0 and selection.height() > 0
 
 
-def region_bounds(doc, padding_percent: int, max_pixels: int):
-    """(x, y, width, height, has_selection) of the area a generation uses:
-    around the selection (see api.plan_region) or the whole canvas. Cheap:
-    doesn't read the selection's pixels."""
+def selection_cells(doc):
+    """The selection as inpainting mask cells, or None if nothing is selected."""
     if not has_selection(doc):
-        return 0, 0, doc.width(), doc.height(), False
-    selection = doc.selection()
-    x, y, width, height = api.plan_region(
-        doc.width(), doc.height(), selection.x(), selection.y(),
-        selection.width(), selection.height(), padding_percent, max_pixels)
-    return x, y, width, height, True
-
-
-def get_region(doc, padding_percent: int, max_pixels: int) -> Region:
-    """The area a generation uses, with the selection's mask if there is one."""
-    x, y, width, height, selected = region_bounds(doc, padding_percent, max_pixels)
-    if not selected:
-        return Region(x, y, width, height)
-
-    data = bytes(doc.selection().pixelData(x, y, width, height))
-    mask = QImage(data, width, height, width, QImage.Format.Format_Grayscale8).copy()
-    return Region(x, y, width, height, mask)
+        return None
+    width, height = doc.width(), doc.height()
+    data = bytes(doc.selection().pixelData(0, 0, width, height))
+    return inpaint.cells_from_pixels(
+        QImage(data, width, height, width, QImage.Format.Format_Grayscale8).copy())
 
 
 def read_image(doc, region: Region) -> QImage:
@@ -91,19 +64,41 @@ def resize(image: QImage, width: int, height: int) -> QImage:
                         Qt.TransformationMode.SmoothTransformation)
 
 
-MASK_GRID = 8  # NovelAI works on 8x8 pixel cells (one latent pixel each).
+scaling_problem = ""  # Why the last sharp_resize had to fall back, if it did.
 
 
-def api_mask(region: Region, width: int, height: int) -> QImage:
-    """Black/white mask at generation size (white = regenerate).
+def sharp_resize(image: QImage, width: int, height: int) -> QImage:
+    """Scale with Lanczos3, as the NovelAI site does, using Krita's own scaler.
 
-    Snapped to NovelAI's 8 px grid like the NovelAI site does: a cell is
-    regenerated if any part of it is selected, and edges stay hard (no
-    smoothing when scaling up).
+    Qt's smooth scaling is softer, and NovelAI generates blurry detail from a
+    soft image. Falls back to it if Krita can't do the scaling.
     """
-    cells = _binarize(resize(region.mask, width // MASK_GRID, height // MASK_GRID))
-    return cells.scaled(width, height, Qt.AspectRatioMode.IgnoreAspectRatio,
-                        Qt.TransformationMode.FastTransformation)
+    global scaling_problem
+    if image.width() == width and image.height() == height:
+        return image
+    source = image.convertToFormat(QImage.Format.Format_ARGB32)
+    scaling_problem = ""
+    try:
+        doc = Krita.instance().createDocument(
+            source.width(), source.height(), "NovelAI scaling", "RGBA", "U8", "", 72.0)
+        try:
+            doc.setBatchmode(True)
+            node = doc.createNode("image", "paintlayer")
+            doc.rootNode().addChildNode(node, None)
+            node.setPixelData(QByteArray(image_bytes(source)), 0, 0,
+                              source.width(), source.height())
+            doc.scaleImage(width, height, 72, 72, "Lanczos3")
+            doc.waitForDone()
+            data = bytes(node.pixelData(0, 0, width, height))
+        finally:
+            doc.close()
+    except Exception as exc:  # Scaling is never a reason to lose a generation.
+        scaling_problem = str(exc) or type(exc).__name__
+        return resize(image, width, height)
+    if len(data) != width * height * 4:
+        scaling_problem = "Krita returned the wrong amount of image data"
+        return resize(image, width, height)
+    return QImage(data, width, height, width * 4, QImage.Format.Format_ARGB32).copy()
 
 
 def to_base64_png(image: QImage) -> str:
@@ -111,32 +106,6 @@ def to_base64_png(image: QImage) -> str:
     buffer.open(QIODevice.OpenModeFlag.WriteOnly)
     image.save(buffer, "PNG")
     return base64.b64encode(bytes(buffer.data())).decode("ascii")
-
-
-# Per-channel differences up to this much (out of 255) count as unchanged.
-CHANGE_THRESHOLD = 2
-
-
-def changed_pixels(result: QImage, sent: QImage) -> QImage:
-    """Grayscale mask (white = changed) of where ``result`` differs from ``sent``.
-
-    For inpainting, NovelAI returns the whole image: the masked cells newly
-    generated and blended into the original at their edges, everything else
-    the original. Keeping exactly the changed pixels reproduces what the
-    NovelAI site shows, without cutting through its blended edge.
-    """
-    a = result.convertToFormat(QImage.Format.Format_RGB32)
-    b = resize(sent, a.width(), a.height()).convertToFormat(QImage.Format.Format_RGB32)
-    painter = QPainter(a)
-    painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_Difference)
-    painter.drawImage(0, 0, b)
-    painter.end()
-    # Threshold every channel byte, then any channel over -> pixel changed.
-    table = bytes([0] * (CHANGE_THRESHOLD + 1) + [255] * (255 - CHANGE_THRESHOLD))
-    data = image_bytes(a).translate(table)
-    flags = QImage(data, a.width(), a.height(), a.bytesPerLine(),
-                   QImage.Format.Format_RGB32).copy()
-    return _binarize(flags)
 
 
 def _apply_alpha(image: QImage, mask: QImage) -> None:
@@ -151,22 +120,42 @@ def _apply_alpha(image: QImage, mask: QImage) -> None:
     painter.end()
 
 
-def compose_result(result: QImage, region: Region, sent: Optional[QImage] = None) -> QImage:
+def compose_result(result: QImage, region: Region, sharp: bool = False) -> QImage:
     """Scale a generated image back to the region and make it a layer.
 
-    Inpainting (``sent`` given): keep the pixels NovelAI changed.
-    Otherwise with a selection: keep the selection. Without one: keep all.
+    With ``region.mask`` (inpainting) it fades out around the masked area.
+    ``sharp``: use the slower scaling meant for finished results.
     """
-    if region.mask is not None and sent is not None:
-        # Scaling only happens when the area was too big to send 1:1.
-        mask = _binarize(resize(changed_pixels(result, sent), region.width, region.height))
-    else:
-        mask = region.mask
-    image = resize(result, region.width, region.height)
+    scale = sharp_resize if sharp else resize
+    image = scale(result, region.width, region.height)
     image = image.convertToFormat(QImage.Format.Format_ARGB32_Premultiplied)
-    if mask is not None:
-        _apply_alpha(image, mask)
+    if region.mask is not None:
+        _apply_alpha(image, resize(region.mask, region.width, region.height)
+                     .convertToFormat(QImage.Format.Format_Grayscale8))
     return image.convertToFormat(QImage.Format.Format_ARGB32)
+
+
+PREVIEW_SIDE = 1024  # Long side of the picture an inpainted result is shown on.
+
+
+def preview_backdrop(doc) -> QImage:
+    """A small copy of the canvas, to show inpainted results on."""
+    whole = read_image(doc, Region(0, 0, doc.width(), doc.height()))
+    return whole.scaled(PREVIEW_SIDE, PREVIEW_SIDE, Qt.AspectRatioMode.KeepAspectRatio,
+                        Qt.TransformationMode.SmoothTransformation)
+
+
+def compose_preview(result: QImage, region: Region, backdrop: QImage, canvas_width: int) -> QImage:
+    """``backdrop`` with an inpainted result pasted where it will go."""
+    scale = backdrop.width() / float(canvas_width)
+    small = Region(0, 0, max(1, int(round(region.width * scale))),
+                   max(1, int(round(region.height * scale))), region.mask)
+    shown = backdrop.copy()
+    painter = QPainter(shown)
+    painter.drawImage(int(round(region.x * scale)), int(round(region.y * scale)),
+                      compose_result(result, small))
+    painter.end()
+    return shown
 
 
 def insert_layer(doc, image: QImage, x: int, y: int, name: str):

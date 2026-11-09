@@ -105,23 +105,6 @@ def inpainting_model(model: str) -> str:
     return INPAINTING_MODELS.get(model, model + "-inpainting")
 
 
-def selection_mode(model: str, strength: float) -> str:
-    """How a selection is generated: "infill" (inpainting) or "img2img".
-
-    Inpainting is preferred because NovelAI then knows which part may change
-    and matches it to the surroundings. V4+ inpainting accepts a strength;
-    V3 inpainting only regenerates fully, so V3 uses image to image below 100%.
-    """
-    if strength >= 1.0 or is_v4(model):
-        return "infill"
-    return "img2img"
-
-
-def params_version(model: str) -> int:
-    """V5 models use parameter format 4, everything older format 3."""
-    return 4 if "diffusion-5" in model else 3
-
-
 def random_seed() -> int:
     return random.randint(0, MAX_SEED)
 
@@ -159,48 +142,6 @@ def fit_resolution(width: int, height: int, max_pixels: int = FREE_MAX_PIXELS,
         else:
             h -= multiple
     return w, h
-
-
-def plan_region(canvas_w: int, canvas_h: int, sel_x: int, sel_y: int, sel_w: int,
-                sel_h: int, padding_percent: int, max_pixels: int = FREE_MAX_PIXELS,
-                multiple: int = SIZE_MULTIPLE) -> Tuple[int, int, int, int]:
-    """Choose the canvas area (x, y, w, h) to send for a selection.
-
-    Like the NovelAI site, the image is sent at its own resolution where
-    possible: rather than scaling a small area up (which blurs the result),
-    the area around the selection is widened at 1:1 until it reaches the
-    generation size limit or the canvas edge. ``padding_percent`` is the
-    minimum context around the selection. Only when that minimum is already
-    larger than the limit does the area get scaled down.
-    """
-    pad = int(max(sel_w, sel_h) * padding_percent / 100)
-    min_w = min(canvas_w, sel_w + 2 * pad)
-    min_h = min(canvas_h, sel_h + 2 * pad)
-    w, h = min_w, min_h
-    if w * h < max_pixels:
-        scale = math.sqrt(max_pixels / float(w * h))
-        w = min(canvas_w, MAX_SIDE, max(min_w, int(w * scale)))
-        h = min(canvas_h, MAX_SIDE, max(min_h, max_pixels // w))
-        w = min(canvas_w, MAX_SIDE, max(min_w, max_pixels // h))  # Re-spend leftover budget.
-        w = _snap_side(w, min_w, canvas_w, multiple)
-        h = _snap_side(h, min_h, canvas_h, multiple)
-
-    # Centre on the selection, then keep the area inside the canvas.
-    x = int(round(sel_x + sel_w / 2.0 - w / 2.0))
-    y = int(round(sel_y + sel_h / 2.0 - h / 2.0))
-    x = max(0, min(canvas_w - w, x))
-    y = max(0, min(canvas_h - h, y))
-    return x, y, w, h
-
-
-def _snap_side(value: int, minimum: int, limit: int, multiple: int) -> int:
-    """Round a side down to a multiple (so it is sent 1:1) if that still
-    covers ``minimum``; otherwise up, if the canvas allows; else unchanged."""
-    down = (value // multiple) * multiple
-    if down >= minimum and down > 0:
-        return down
-    up = -(-minimum // multiple) * multiple
-    return up if up <= limit else value
 
 
 # ---- Character prompts (V4 and newer) ---------------------------------------
@@ -273,6 +214,7 @@ class GenerationParams:
     use_coords: bool = False
     # Image to image / inpainting. ``image`` and ``mask`` are base64 PNGs of
     # exactly width x height pixels; white in the mask means "regenerate".
+    # Sent masks follow NovelAI's grid of 8 x 8 pixel cells.
     image: Optional[str] = None
     mask: Optional[str] = None
     strength: float = 0.7
@@ -291,13 +233,14 @@ def build_payload(p: GenerationParams) -> dict:
     """Build the JSON body for POST /ai/generate-image."""
     # Quality tags and the Undesired Content preset are added here, as the
     # NovelAI site does (see presets.py); the server adds neither.
-    prompt = presets.apply_quality(p.model, p.prompt.strip(), p.quality)
-    negative, uc_index = presets.apply_uc(p.model, p.prompt, p.negative_prompt, p.uc_preset)
+    # They're the generating model's: V5 Curated inpaints with V4.5 Curated's model.
     action = p.action
     model = inpainting_model(p.model) if action == "infill" else p.model
+    prompt = presets.apply_quality(model, p.prompt.strip(), p.quality)
+    negative, uc_index = presets.apply_uc(model, p.prompt, p.negative_prompt, p.uc_preset)
 
     params = {
-        "params_version": params_version(p.model),
+        "params_version": 4,
         "width": int(p.width),
         "height": int(p.height),
         "scale": float(p.scale),
@@ -307,18 +250,25 @@ def build_payload(p: GenerationParams) -> dict:
         "seed": int(p.seed),
         "qualityToggle": p.quality != presets.OFF,
         "ucPreset": uc_index,
+        "tag_hint_qt": presets.quality_hint(p.quality),
+        "tag_hint_uc_preset": presets.uc_hint(p.uc_preset),
         "dynamic_thresholding": False,
         "controlnet_strength": 1,
         "legacy": False,
-        "add_original_image": True,
+        # For inpainting the result is pasted back here, as the site does.
+        "add_original_image": action != "infill",
         "cfg_rescale": float(p.cfg_rescale),
         "noise_schedule": p.noise_schedule,
         "legacy_v3_extend": False,
         "negative_prompt": negative,
     }
 
+    if "diffusion-5" in model:  # The site's default for models with transparency.
+        params["straight_alpha"] = True
+
     if is_v4(p.model):
-        if params["noise_schedule"] == "native":  # V3 only.
+        # "native" is V3 only, and V5 always uses karras.
+        if params["noise_schedule"] == "native" or "diffusion-5" in model:
             params["noise_schedule"] = "karras"
         # Characters as the NovelAI site sends them: in "characterPrompts",
         # and as character captions next to the base prompt. Quality tags and
@@ -326,7 +276,7 @@ def build_payload(p: GenerationParams) -> dict:
         characters = [c for c in p.characters if c.enabled and c.prompt.strip()]
         char_prompts, char_negatives, character_prompts = [], [], []
         for character in characters:
-            x, y = character_position(p.model, character.x, character.y)
+            x, y = character_position(model, character.x, character.y)
             centers = [{"x": x, "y": y}]
             char_prompts.append({"char_caption": character.prompt.strip(), "centers": centers})
             char_negatives.append({"char_caption": character.negative.strip(), "centers": centers})
@@ -335,8 +285,6 @@ def build_payload(p: GenerationParams) -> dict:
                 "center": {"x": x, "y": y}, "enabled": True})
         use_coords = bool(p.use_coords and characters)
         params.update({
-            "deliberate_euler_ancestral_bug": False,
-            "prefer_brownian": True,
             "use_coords": use_coords,
             "characterPrompts": character_prompts,
             "v4_prompt": {
@@ -352,19 +300,25 @@ def build_payload(p: GenerationParams) -> dict:
     else:
         params.update({"sm": False, "sm_dyn": False})
 
+    if p.sampler == "k_euler_ancestral" and params["noise_schedule"] != "native":
+        params.update({"deliberate_euler_ancestral_bug": False, "prefer_brownian": True})
+
     if action == "img2img":
         params.update({
             "image": p.image,
             "strength": float(p.strength),
             "noise": float(p.noise),
-            "extra_noise_seed": int(p.seed),
+            "extra_noise_seed": max(0, int(p.seed) - 1),  # As the site picks it.
         })
     elif action == "infill":
         params.update({
             "image": p.image,
             "mask": p.mask,
+            # The site always sends its image to image value here. Inpainting's
+            # own strength is the one below.
+            "strength": 0.7,
             "noise": float(p.noise),
-            "extra_noise_seed": int(p.seed),
+            "extra_noise_seed": max(0, int(p.seed) - 1),
         })
         if is_v4(p.model):
             # As the NovelAI site sends it: inpaint strength below 100% goes in

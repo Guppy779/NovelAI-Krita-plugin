@@ -1,4 +1,4 @@
-"""Settings dialog: API token, image size limit, inpainting context, autocomplete."""
+"""Settings dialog: API token, image size limit, autocomplete."""
 
 from . import api, settings
 from .qt import (
@@ -53,20 +53,11 @@ class SettingsDialog(QDialog):
             "Generations are scaled to about this many pixels squared.\n"
             "1024 (1024 x 1024 area) is free for Opus subscribers; larger costs Anlas.")
 
-        self.padding = QSpinBox()
-        self.padding.setRange(0, 200)
-        self.padding.setSuffix(" %")
-        self.padding.setValue(settings.get_int("context_padding"))
-        self.padding.setToolTip(
-            "How much of the surrounding canvas is sent along with a selection,\n"
-            "relative to the selection size. More context gives better blending.")
-
         form = QFormLayout()
         form.addRow("API token", token_row)
         form.addRow("", help_label)
         form.addRow("", self.status)
         form.addRow("Max generation size", self.max_side)
-        form.addRow("Selection context", self.padding)
 
         self.autocomplete = QCheckBox("Suggest tags while typing prompts")
         self.autocomplete.setChecked(settings.get_bool("autocomplete"))
@@ -78,8 +69,8 @@ class SettingsDialog(QDialog):
         self.full_image = QCheckBox("Add the whole image as the layer")
         self.full_image.setChecked(settings.get_bool("inpaint_full_image"))
         self.full_image.setToolTip(
-            "Off: the inpainted layer holds only the pixels NovelAI changed and is\n"
-            "transparent elsewhere, so layers below stay visible.\n"
+            "Off: the inpainted layer holds only the new area, fading out at its\n"
+            "edges, and is transparent elsewhere, so layers below stay visible.\n"
             "On: the layer is NovelAI's whole image for the area it was sent\n"
             "(often the whole canvas), covering everything below it.")
         form.addRow("Inpainting", self.full_image)
@@ -133,7 +124,6 @@ class SettingsDialog(QDialog):
         settings.set("token", self.token.text().strip())
         side = self.max_side.value()
         settings.set("max_pixels", side * side)
-        settings.set("context_padding", self.padding.value())
         settings.set("autocomplete", self.autocomplete.isChecked())
         settings.set("inpaint_full_image", self.full_image.isChecked())
         settings.set("live_preview", self.live_preview.isChecked())

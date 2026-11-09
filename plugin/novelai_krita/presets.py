@@ -156,6 +156,18 @@ UC_PRESETS = {
 }
 DEFAULT_UC_PRESET = "Heavy"
 
+# The site's numbers for its presets, sent alongside the text they add.
+_QUALITY_HINTS = {STANDARD: 1, LIGHT: 3, OFF: 0}
+_UC_HINTS = {NONE: 0, "Heavy": 2, "Light": 3, "Human Focus": 4, "Furry Focus": 5}
+
+
+def quality_hint(level: str) -> int:
+    return _QUALITY_HINTS.get(level, 0)
+
+
+def uc_hint(preset: str) -> int:
+    return _UC_HINTS.get(preset, 0)
+
 
 def uc_options(model: str) -> List[str]:
     """Preset names for the model, in the site's order, then "None"."""

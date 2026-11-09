@@ -14,16 +14,11 @@ from . import api
 from .prompt_edit import PromptEdit
 from .qt import (
     QCheckBox, QComboBox, QFont, QFrame, QHBoxLayout, QLabel, QMenu, QPainter, QPen,
-    QPointF, QRectF, Qt, QToolButton, QVBoxLayout, QWidget, QWidgetAction,
+    QPointF, QRectF, Qt, QToolButton, QVBoxLayout, QWidget, QWidgetAction, event_point,
 )
 
 CANVAS_SIZE = 220  # Long side of the position canvas, in pixels.
 DOT_RADIUS = 11
-
-
-def _event_point(event):
-    """The mouse position of an event as a QPointF (PyQt5 and PyQt6)."""
-    return QPointF(event.position() if hasattr(event, "position") else event.pos())
 
 
 class PositionCanvas(QWidget):
@@ -130,7 +125,7 @@ class PositionCanvas(QWidget):
     def mousePressEvent(self, event):
         if event.button() != Qt.MouseButton.LeftButton:
             return
-        point = _event_point(event)
+        point = event_point(event)
         hit = self._dot_at(point)
         if hit is not None:
             self._active = hit  # Grabbed where it is: no jump.
@@ -142,7 +137,7 @@ class PositionCanvas(QWidget):
 
     def mouseMoveEvent(self, event):
         if self._dragging is not None:
-            self._move(self._dragging, _event_point(event))
+            self._move(self._dragging, event_point(event))
 
     def mouseReleaseEvent(self, event):
         self._finish_drag()

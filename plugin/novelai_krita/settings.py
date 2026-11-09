@@ -26,7 +26,6 @@ DEFAULTS = {
     "uc_preset": presets.DEFAULT_UC_PRESET,
     "character_positions": "false",
     "max_pixels": str(api.FREE_MAX_PIXELS),
-    "context_padding": "20",
     "show_advanced": "false",
     "save_dir": "",
     "autocomplete": "true",

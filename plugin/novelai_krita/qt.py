@@ -17,7 +17,8 @@ try:
         QNetworkAccessManager, QNetworkReply, QNetworkRequest,
     )
     from PyQt5.QtWidgets import (  # noqa: F401
-        QAbstractItemView, QAbstractSpinBox, QCheckBox, QComboBox, QCompleter, QDialog,
+        QAbstractItemView, QAbstractSpinBox, QButtonGroup, QCheckBox, QComboBox, QCompleter,
+        QDialog,
         QDialogButtonBox,
         QDoubleSpinBox, QFileDialog, QFormLayout, QFrame, QHBoxLayout,
         QLabel, QLineEdit, QListWidget, QListWidgetItem, QMenu, QMessageBox,
@@ -37,7 +38,8 @@ except ImportError:
         QNetworkAccessManager, QNetworkReply, QNetworkRequest,
     )
     from PyQt6.QtWidgets import (  # noqa: F401
-        QAbstractItemView, QAbstractSpinBox, QCheckBox, QComboBox, QCompleter, QDialog,
+        QAbstractItemView, QAbstractSpinBox, QButtonGroup, QCheckBox, QComboBox, QCompleter,
+        QDialog,
         QDialogButtonBox,
         QDoubleSpinBox, QFileDialog, QFormLayout, QFrame, QHBoxLayout,
         QLabel, QLineEdit, QListWidget, QListWidgetItem, QMenu, QMessageBox,
@@ -51,6 +53,11 @@ def image_bytes(image):
     ptr = image.constBits()
     ptr.setsize(image.sizeInBytes())
     return ptr.asstring()
+
+
+def event_point(event):
+    """Where a mouse event happened (PyQt5 and PyQt6 name this differently)."""
+    return QPointF(event.position() if hasattr(event, "position") else event.pos())
 
 
 class _PassWheel(QObject):

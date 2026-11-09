@@ -6,10 +6,11 @@ from dataclasses import dataclass, field
 
 from krita import DockWidget
 
-from . import api, canvas, doc_state, metadata, presets, settings
+from . import api, canvas, doc_state, inpaint, inpaint_math, metadata, presets, settings
 from .characters import CharacterEditor
 from .client import NovelAIClient
 from .import_dialog import ImportDialog, LABELS as IMPORT_LABELS, read_image
+from .inpaint_dialog import InpaintDialog
 from .preview import PreviewWindow, THUMBNAIL_SIZE
 from .prompt_edit import PromptEdit
 from .settings_dialog import SettingsDialog, max_pixels
@@ -33,6 +34,7 @@ class Result:
     # The panel's character prompts when it was made, for "Use this prompt".
     characters: list = field(default_factory=list)
     custom_positions: bool = False
+    shown: QImage = None  # Inpainting: the result as it will look on the canvas.
 
 
 class _Panel(QWidget):
@@ -58,6 +60,7 @@ class NovelAIDocker(DockWidget):
         self._results = {}  # History item id -> Result.
         self._next_id = 0
         self.preview = PreviewWindow()  # Shows the image forming, and the results.
+        self._mask = None  # The active document's inpainting mask.
         # Each document keeps its own prompt and settings (see doc_state.py).
         self._doc = None  # The document the panel currently shows.
         self._loading = False  # Filling the panel from a document's settings.
@@ -153,6 +156,19 @@ class NovelAIDocker(DockWidget):
         row.addWidget(QLabel("Strength"))
         row.addWidget(self.strength, 1)
         row.addWidget(self.strength_label)
+        layout.addLayout(row)
+        self.inpaint_button = QPushButton("Inpaint...")
+        self.inpaint_button.setToolTip(
+            "Paint which part of the image to regenerate. A selection is used as\n"
+            "the starting point.")
+        self.inpaint_button.clicked.connect(self.open_inpaint)
+        self.clear_mask_button = QPushButton("Clear mask")
+        self.clear_mask_button.setToolTip("Go back to generating the whole image.")
+        self.clear_mask_button.clicked.connect(self._clear_mask)
+        self.clear_mask_button.setVisible(False)
+        row = QHBoxLayout()
+        row.addWidget(self.inpaint_button, 1)
+        row.addWidget(self.clear_mask_button, 1)
         layout.addLayout(row)
         self.mode_label = QLabel()
         self.mode_label.setWordWrap(True)
@@ -365,7 +381,7 @@ class NovelAIDocker(DockWidget):
         """Fill the Quality tags and Undesired preset boxes for the current
         model, showing the user's choices where the model has them."""
         model = self._model_name()
-        self.characters.set_model(model)
+        self.characters.set_model(self._generating_model())
         self.prompt.set_model(model)
         self.negative.set_model(model)
 
@@ -403,13 +419,13 @@ class NovelAIDocker(DockWidget):
         doc = canvas.active_document()
         if doc is None:
             text = "Open a document to generate."
-        elif canvas.has_selection(doc):
-            mode = api.selection_mode(self._model_name(), value / 100.0)
-            if mode == "infill":
-                text = ("Inpaint the selection" if value >= 100
-                        else "Inpaint the selection at %d%% strength" % value)
+        elif self._active_mask(doc) is not None:
+            place = "focus area" if self._mask.focus is not None else "masked area"
+            # V3 inpainting has no strength.
+            if value >= 100 or not api.is_v4(self._model_name()):
+                text = "Inpaint the %s" % place
             else:
-                text = "Refine the selection (image to image, edges may show)"
+                text = "Inpaint the %s at %d%% strength" % (place, value)
         else:
             text = ("Generate a new image for the whole canvas" if value >= 100
                     else "Refine the whole canvas (image to image)")
@@ -426,10 +442,12 @@ class NovelAIDocker(DockWidget):
         """Warn when the next generation would spend Anlas (Opus free limits)."""
         reasons = []
         if doc is not None:
-            _, _, w, h, selected = canvas.region_bounds(
-                doc, settings.get_int("context_padding"), max_pixels())
-            width, height = self._generation_size(
-                w, h, self.strength.value() < 100 or selected)
+            mask = self._active_mask(doc)
+            if mask is not None:
+                width, height = inpaint.generation_size(mask, max_pixels())
+            else:
+                width, height = self._generation_size(
+                    doc.width(), doc.height(), self.strength.value() < 100)
             # Character positions are placed on a canvas of the same shape.
             self.characters.set_aspect(width, height)
             reasons = api.anlas_warnings(
@@ -526,6 +544,7 @@ class NovelAIDocker(DockWidget):
         if canvas.same_document(doc, self._doc):
             return
         self._doc = doc
+        self._set_mask(None)  # A mask belongs to the document it was painted on.
         if doc is None:
             return  # Keep showing the last document's settings.
         stored = doc_state.decode(canvas.read_annotation(doc, doc_state.ANNOTATION))
@@ -589,6 +608,51 @@ class NovelAIDocker(DockWidget):
         if len(imported) > 1:
             imported[-2:] = ["%s and %s" % (imported[-2], imported[-1])]
         self._say("Imported the %s from %s." % (", ".join(imported), name))
+
+    # ---- Inpainting ---------------------------------------------------------
+
+    def _generating_model(self):
+        """The model doing the work: its limits are the ones that apply.
+        (V5 Curated inpaints with V4.5 Curated's model, for one.)"""
+        model = self._model_name()
+        return api.inpainting_model(model) if self._mask is not None and model else model
+
+    def _set_mask(self, mask):
+        self._mask = mask
+        self.characters.set_model(self._generating_model())
+        self.inpaint_button.setText("Edit mask..." if mask is not None else "Inpaint...")
+        self.clear_mask_button.setVisible(mask is not None)
+
+    def _clear_mask(self):
+        self._set_mask(None)
+        self._update_mode()
+
+    def _active_mask(self, doc):
+        """The mask to use on ``doc``, unless the canvas has changed size since."""
+        if self._mask is not None and self._mask.canvas_size != (doc.width(), doc.height()):
+            self._set_mask(None)
+            self._say("The canvas changed size, so the inpainting mask was cleared.")
+        return self._mask
+
+    def open_inpaint(self):
+        doc = canvas.active_document()
+        if doc is None:
+            self._say("Open or create a document first.")
+            return
+        self._follow_document()
+        width, height = doc.width(), doc.height()
+        mask = self._active_mask(doc)
+        if mask is not None:  # Cancelling must leave the old mask as it was.
+            mask = inpaint.Mask(mask.cells.copy(), mask.canvas_size, mask.focus, mask.context)
+        else:
+            cells = canvas.selection_cells(doc)
+            mask = inpaint.Mask(cells if cells is not None else inpaint.blank_cells(width, height),
+                                (width, height))
+        image = canvas.read_image(doc, canvas.Region(0, 0, width, height))
+        dialog = InpaintDialog(image, mask, self)
+        if dialog.exec():
+            self._set_mask(dialog.mask())
+            self._update_mode()
 
     def open_settings(self):
         SettingsDialog(self._client, self).exec()
@@ -656,9 +720,21 @@ class NovelAIDocker(DockWidget):
         self._save_last_used()
 
         strength = self.strength.value() / 100.0
-        region = canvas.get_region(doc, settings.get_int("context_padding"), max_pixels())
-        width, height = self._generation_size(
-            region.width, region.height, strength < 1.0 or region.mask is not None)
+        width, height = doc.width(), doc.height()
+        mask = self._active_mask(doc)
+        plan = inpaint.plan(mask, max_pixels()) if mask is not None else None
+        if mask is not None and plan is None:
+            self._say("The inpainting mask is empty. Click Edit mask to paint one.")
+            return
+        region = canvas.Region(*plan.area) if plan is not None else canvas.Region(0, 0, width, height)
+        canvas_size = width, height
+        width, height = plan.size if plan is not None else self._generation_size(
+            width, height, strength < 1.0)
+        people = [api.CharacterPrompt(**c) for c in characters]
+        if mask is not None and mask.focus is not None:
+            for person in people:  # Positions are relative to what's sent.
+                person.x, person.y = inpaint_math.focus_position(
+                    person.x, person.y, canvas_size[0], canvas_size[1], plan.area)
         params = api.GenerationParams(
             prompt=prompt,
             negative_prompt=self.negative.toPlainText(),
@@ -674,24 +750,21 @@ class NovelAIDocker(DockWidget):
             n_samples=self.n_samples.value(),
             quality=self.quality.currentData(),
             uc_preset=self.uc_preset.currentText(),
-            characters=[api.CharacterPrompt(**c) for c in characters],
+            characters=people,
             use_coords=custom_positions,
             strength=strength,
         )
-        mode = api.selection_mode(params.model, strength) if region.mask is not None else None
-        # For inpainting, the image sent is kept to find which pixels NovelAI
-        # changed; the result layer keeps exactly those (see compose_result).
-        sent_image = None
-        if strength < 1.0 or region.mask is not None:
-            source = canvas.resize(canvas.read_image(doc, region), width, height)
+        # Inpainted results are shown pasted into a small copy of the canvas.
+        composer = None
+        if plan is not None or strength < 1.0:
+            source = canvas.sharp_resize(canvas.read_image(doc, region), width, height)
             params.image = canvas.to_base64_png(source)
-            if mode == "infill":
-                params.mask = canvas.to_base64_png(canvas.api_mask(region, width, height))
-                if settings.get_bool("inpaint_full_image"):
-                    # Keep NovelAI's whole image: drop the selection cut.
-                    region = canvas.Region(region.x, region.y, region.width, region.height)
-                else:
-                    sent_image = source
+        if plan is not None:
+            params.mask = canvas.to_base64_png(inpaint.request_mask(plan))
+            if not settings.get_bool("inpaint_full_image"):
+                region.mask = inpaint.blend_alpha(plan)
+            backdrop = canvas.preview_backdrop(doc)
+            composer = lambda image: canvas.compose_preview(image, region, backdrop, canvas_size[0])
         if self.random_seed.isChecked():
             self.seed.setText(str(seed))  # Show which random seed was used.
 
@@ -701,10 +774,10 @@ class NovelAIDocker(DockWidget):
         self._set_busy(True)
         self._show_preview()
         on_images = lambda images: self._on_images(
-            images, doc, region, seed, prompt, sent_image, characters, custom_positions)
+            images, doc, region, seed, prompt, composer, characters, custom_positions)
         if settings.get_bool("live_preview") and api.supports_streaming(params.model):
             self._job = self._client.generate_stream(
-                token, payload, lambda event: self._on_preview(event, params.steps),
+                token, payload, lambda event: self._on_preview(event, params.steps, composer),
                 on_images, self._on_error)
         else:
             self._job = self._client.generate(token, payload, on_images, self._on_error)
@@ -724,17 +797,17 @@ class NovelAIDocker(DockWidget):
         self._say(message)
         self.refresh_account()
 
-    def _on_preview(self, event, steps):
+    def _on_preview(self, event, steps, composer=None):
         """Show an in-progress image from the stream (first image of a batch)."""
         if event.sample != 0 or self._job is None:
             return
         image = QImage.fromData(event.image)
         if image.isNull():
             return
-        self.preview.view.set_image(image)
+        self.preview.view.set_image(composer(image) if composer is not None else image)
         self._say("Generating... step %d of %d" % (event.step + 1, steps))
 
-    def _on_images(self, images, doc, region, seed, prompt, sent_image=None,
+    def _on_images(self, images, doc, region, seed, prompt, composer=None,
                    characters=(), custom_positions=False):
         self._job = None
         self._set_busy(False)
@@ -753,11 +826,12 @@ class NovelAIDocker(DockWidget):
             if image.isNull():
                 continue
             result = Result(
-                image=canvas.compose_result(image, region, sent_image),
+                image=canvas.compose_result(image, region, sharp=True),
                 x=region.x, y=region.y,
                 seed=image_seed if image_seed is not None else seed + index,
                 prompt=prompt, document=doc, original=data,
-                characters=list(characters), custom_positions=custom_positions)
+                characters=list(characters), custom_positions=custom_positions,
+                shown=composer(image) if composer is not None else None)
             self._add_history(result)
             added += 1
 
@@ -766,7 +840,10 @@ class NovelAIDocker(DockWidget):
         if added:
             self.history.setCurrentRow(min(added, self.history.count()) - 1)
         self._show_current()
-        self._say("Done in %.1f s (seed %d)." % (elapsed, seed))
+        text = "Done in %.1f s (seed %d)." % (elapsed, seed)
+        if canvas.scaling_problem:
+            text += " Sharp scaling wasn't available: %s." % canvas.scaling_problem
+        self._say(text)
 
     # ---- Results ----------------------------------------------------------
 
@@ -776,8 +853,11 @@ class NovelAIDocker(DockWidget):
     def _show_current(self, *_):
         """Show the result picked in the history, as NovelAI sent it."""
         item = self.history.currentItem()
-        self.preview.view.set_image(
-            QImage.fromData(self._result(item).original) if item is not None else None)
+        image = None
+        if item is not None:
+            result = self._result(item)
+            image = result.shown if result.shown is not None else QImage.fromData(result.original)
+        self.preview.view.set_image(image)
         self.preview.add_button.setEnabled(item is not None)
 
     def _add_current(self):
@@ -786,7 +866,7 @@ class NovelAIDocker(DockWidget):
             self._insert(self._result(item))
 
     def _add_history(self, result):
-        thumb = result.image.scaled(
+        thumb = (result.shown if result.shown is not None else result.image).scaled(
             THUMBNAIL_SIZE, THUMBNAIL_SIZE, Qt.AspectRatioMode.KeepAspectRatio,
             Qt.TransformationMode.SmoothTransformation)
         item = QListWidgetItem(QIcon(QPixmap.fromImage(thumb)), "")

@@ -38,20 +38,11 @@ def test_model_list():
     assert api.inpainting_model("nai-diffusion-5-full") == "nai-diffusion-5-full-inpainting"
 
 
-def test_selection_mode():
-    assert api.selection_mode("nai-diffusion-4-5-full", 1.0) == "infill"
-    assert api.selection_mode("nai-diffusion-4-5-full", 0.7) == "infill"  # Not img2img.
-    assert api.selection_mode("nai-diffusion-5-full", 0.5) == "infill"
-    assert api.selection_mode("nai-diffusion-3", 1.0) == "infill"
-    assert api.selection_mode("nai-diffusion-3", 0.7) == "img2img"  # V3: no inpaint strength.
-    assert api.selection_mode("nai-diffusion-5-curated", 0.7) == "infill"
-
-
 def test_infill_payload_strength_like_the_site():
     p = api.GenerationParams(prompt="cat", image="A", mask="B", strength=0.7, seed=5)
     params = api.build_payload(p)["parameters"]
     assert params["img2img"] == {"strength": 0.7, "color_correct": True}
-    assert params["extra_noise_seed"] == 5 and params["noise"] == 0.0
+    assert params["extra_noise_seed"] == 4 and params["noise"] == 0.0
     full = api.build_payload(api.GenerationParams(prompt="cat", image="A", mask="B", strength=1.0))
     assert "img2img" not in full["parameters"]  # Full strength: no nested object.
     v3 = api.build_payload(api.GenerationParams(prompt="c", image="A", mask="B",
@@ -62,7 +53,8 @@ def test_infill_payload_strength_like_the_site():
 def test_params_version():
     assert api.build_payload(api.GenerationParams(prompt="c", model="nai-diffusion-5-full"))["parameters"]["params_version"] == 4
     assert api.build_payload(api.GenerationParams(prompt="c", model="nai-diffusion-5-curated"))["parameters"]["params_version"] == 4
-    assert api.build_payload(api.GenerationParams(prompt="c"))["parameters"]["params_version"] == 3
+    assert api.build_payload(api.GenerationParams(prompt="c"))["parameters"]["params_version"] == 4
+    assert api.build_payload(api.GenerationParams(prompt="c", model="nai-diffusion-3"))["parameters"]["params_version"] == 4
 
 
 def test_model_helpers():
@@ -128,7 +120,109 @@ def test_img2img_payload():
     assert payload["action"] == "img2img"
     assert params["image"] == "AAAA"
     assert params["strength"] == 0.5
-    assert params["extra_noise_seed"] == 7
+    assert params["extra_noise_seed"] == 6
+
+
+def test_v3_gets_the_brownian_settings_too():
+    euler_a = api.build_payload(api.GenerationParams(
+        prompt="c", model="nai-diffusion-3", noise_schedule="karras"))["parameters"]
+    assert euler_a["prefer_brownian"] is True and euler_a["deliberate_euler_ancestral_bug"] is False
+    native = api.build_payload(api.GenerationParams(
+        prompt="c", model="nai-diffusion-3", noise_schedule="native"))["parameters"]
+    assert "prefer_brownian" not in native
+    other = api.build_payload(api.GenerationParams(
+        prompt="c", model="nai-diffusion-3", sampler="k_euler", noise_schedule="karras"))["parameters"]
+    assert "prefer_brownian" not in other
+
+
+def test_v5_curated_inpainting_follows_its_v4_5_model():
+    person = api.CharacterPrompt(prompt="girl", x=0.33, y=0.62)
+    inpaint = api.build_payload(api.GenerationParams(
+        prompt="c", model="nai-diffusion-5-curated", image="A", mask="B", strength=1.0,
+        noise_schedule="exponential", characters=[person], use_coords=True))["parameters"]
+    assert inpaint["noise_schedule"] == "exponential"
+    assert inpaint["characterPrompts"][0]["center"] == {"x": 0.3, "y": 0.7}  # The 5 x 5 grid.
+    plain = api.build_payload(api.GenerationParams(
+        prompt="c", model="nai-diffusion-5-curated",
+        noise_schedule="exponential", characters=[person], use_coords=True))["parameters"]
+    assert plain["noise_schedule"] == "karras"
+    assert plain["characterPrompts"][0]["center"] == {"x": 0.33, "y": 0.62}  # Free on V5.
+
+
+def test_v5_full_inpainting_keeps_free_positions():
+    person = api.CharacterPrompt(prompt="girl", x=0.33, y=0.62)
+    params = api.build_payload(api.GenerationParams(
+        prompt="c", model="nai-diffusion-5-full", image="A", mask="B",
+        characters=[person], use_coords=True))["parameters"]
+    assert params["characterPrompts"][0]["center"] == {"x": 0.33, "y": 0.62}
+
+
+def test_v5_always_uses_karras():
+    params = api.build_payload(api.GenerationParams(
+        prompt="c", model="nai-diffusion-5-full", noise_schedule="exponential"))["parameters"]
+    assert params["noise_schedule"] == "karras"
+    older = api.build_payload(api.GenerationParams(
+        prompt="c", model="nai-diffusion-4-5-full", noise_schedule="exponential"))["parameters"]
+    assert older["noise_schedule"] == "exponential"
+
+
+def test_straight_alpha_follows_the_generating_model():
+    def params(**extra):
+        return api.build_payload(api.GenerationParams(prompt="c", **extra))["parameters"]
+
+    assert params(model="nai-diffusion-5-full")["straight_alpha"] is True
+    assert params(model="nai-diffusion-5-full", image="A", mask="B")["straight_alpha"] is True
+    assert "straight_alpha" not in params(model="nai-diffusion-4-5-full")
+    # V5 Curated inpaints with V4.5 Curated's model, which has no transparency.
+    assert "straight_alpha" not in params(model="nai-diffusion-5-curated", image="A", mask="B")
+
+
+def test_preset_hints_like_the_site():
+    params = api.build_payload(api.GenerationParams(
+        prompt="c", model="nai-diffusion-5-full", uc_preset="Heavy"))["parameters"]
+    assert (params["tag_hint_qt"], params["tag_hint_uc_preset"]) == (1, 2)
+    params = api.build_payload(api.GenerationParams(
+        prompt="c", model="nai-diffusion-5-full", quality="light", uc_preset="Human Focus"))["parameters"]
+    assert (params["tag_hint_qt"], params["tag_hint_uc_preset"]) == (3, 4)
+    params = api.build_payload(api.GenerationParams(
+        prompt="c", model="nai-diffusion-5-full", quality="off", uc_preset="None"))["parameters"]
+    assert (params["tag_hint_qt"], params["tag_hint_uc_preset"]) == (0, 0)
+
+
+def test_brownian_settings_only_with_euler_ancestral():
+    euler_a = api.build_payload(api.GenerationParams(prompt="c"))["parameters"]
+    assert euler_a["prefer_brownian"] is True and euler_a["deliberate_euler_ancestral_bug"] is False
+    other = api.build_payload(api.GenerationParams(prompt="c", sampler="k_dpmpp_2m"))["parameters"]
+    assert "prefer_brownian" not in other and "deliberate_euler_ancestral_bug" not in other
+
+
+def test_v5_full_inpaints_with_its_own_model():
+    payload = api.build_payload(api.GenerationParams(
+        prompt="cat", model="nai-diffusion-5-full", image="A", mask="B", strength=1.0, seed=9))
+    assert payload["model"] == "nai-diffusion-5-full-inpainting"
+    assert payload["input"].endswith(", very aesthetic, masterpiece, no text")
+    params = payload["parameters"]
+    assert params["params_version"] == 4 and params["inpaintImg2ImgStrength"] == 1.0
+    assert params["strength"] == 0.7 and params["extra_noise_seed"] == 8
+
+
+def test_v5_curated_inpainting_uses_the_tags_of_the_model_doing_it():
+    payload = api.build_payload(api.GenerationParams(
+        prompt="cat", model="nai-diffusion-5-curated", image="A", mask="B"))
+    assert payload["model"] == "nai-diffusion-4-5-curated-inpainting"
+    assert "rating:general" in payload["input"]  # V4.5 Curated's quality tags.
+
+
+def test_seed_zero_keeps_a_valid_extra_seed():
+    params = api.build_payload(api.GenerationParams(prompt="c", image="A", seed=0))["parameters"]
+    assert params["extra_noise_seed"] == 0
+
+
+def test_only_inpainting_asks_for_the_raw_result():
+    infill = api.build_payload(api.GenerationParams(prompt="cat", image="A", mask="B"))
+    img2img = api.build_payload(api.GenerationParams(prompt="cat", image="A"))
+    assert infill["parameters"]["add_original_image"] is False
+    assert img2img["parameters"]["add_original_image"] is True
 
 
 def test_infill_payload_uses_inpainting_model():
@@ -234,51 +328,6 @@ def test_fit_resolution_without_upscale_keeps_native_size():
     assert api.fit_resolution(1000, 1000, upscale=False) == (1024, 1024)  # Nearest multiple.
     assert api.fit_resolution(2000, 3000, upscale=False) == (832, 1216)  # Too big: scaled down.
     assert api.fit_resolution(512, 512) == (1024, 1024)  # Text to image still fills the budget.
-
-
-def _contains(region, sel):
-    x, y, w, h = region
-    sx, sy, sw, sh = sel
-    return x <= sx and y <= sy and x + w >= sx + sw and y + h >= sy + sh
-
-
-def test_plan_region_uses_whole_small_canvas_like_the_site():
-    # The user's case: 832x1216 canvas, face selection.
-    sel = (200, 150, 440, 390)
-    region = api.plan_region(832, 1216, *sel, padding_percent=20)
-    assert region == (0, 0, 832, 1216)
-    assert api.fit_resolution(*region[2:], upscale=False) == (832, 1216)  # Sent 1:1.
-
-
-def test_plan_region_widens_at_native_resolution_on_big_canvas():
-    sel = (1500, 1200, 300, 300)
-    x, y, w, h = api.plan_region(4000, 3000, *sel, padding_percent=20)
-    assert _contains((x, y, w, h), sel)
-    assert w % 64 == 0 and h % 64 == 0
-    assert w * h <= api.FREE_MAX_PIXELS and w * h > 0.9 * api.FREE_MAX_PIXELS
-    assert api.fit_resolution(w, h, upscale=False) == (w, h)  # No resampling.
-    # Centred on the selection.
-    assert abs((x + w / 2) - 1650) <= 1 and abs((y + h / 2) - 1350) <= 1
-
-
-def test_plan_region_near_edges_stays_inside_canvas():
-    for sel in [(0, 0, 200, 200), (3800, 2800, 200, 200), (0, 2900, 4000, 100)]:
-        x, y, w, h = api.plan_region(4000, 3000, *sel, padding_percent=50)
-        assert x >= 0 and y >= 0 and x + w <= 4000 and y + h <= 3000
-        assert _contains((x, y, w, h), sel)
-
-
-def test_plan_region_large_selection_keeps_minimum_context():
-    sel = (500, 500, 1800, 1500)  # Bigger than the budget: scaled down later.
-    x, y, w, h = api.plan_region(4000, 3000, *sel, padding_percent=10)
-    assert (w, h) == (1800 + 2 * 180, 1500 + 2 * 180)
-    assert _contains((x, y, w, h), sel)
-
-
-def test_plan_region_respects_larger_budget():
-    sel = (1500, 1200, 300, 300)
-    _, _, w, h = api.plan_region(4000, 3000, *sel, padding_percent=20, max_pixels=1536 * 1536)
-    assert w * h > api.FREE_MAX_PIXELS and w * h <= 1536 * 1536
 
 
 # ---- Character prompts -------------------------------------------------------

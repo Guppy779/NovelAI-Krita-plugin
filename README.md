@@ -3,7 +3,7 @@
 Generate, refine and inpaint images with [NovelAI](https://novelai.net) without leaving Krita.
 The plugin adds a panel (a docker), in the spirit of
 [Krita AI Diffusion](https://github.com/Acly/krita-ai-diffusion), that sends your prompt, and
-when needed your canvas and selection, to NovelAI. Each result opens in a preview window, where you add the ones you like as layers.
+when needed your canvas, to NovelAI. Each result opens in a preview window, where you add the ones you like as layers.
 
 This is an unofficial, community-made plugin. It isn't affiliated with or endorsed by NovelAI
 or Anlatan.
@@ -11,9 +11,9 @@ or Anlatan.
 ## Features
 
 - **Text to image** at your canvas's aspect ratio, with all current NovelAI models, V5 included.
-- **Refine** the whole canvas or a selection with image to image.
-- **Inpaint** a selection the same way the NovelAI site does, at full resolution and blended
-  into the surrounding canvas.
+- **Refine** the whole canvas with image to image.
+- **Inpaint** by painting a mask over your canvas, the same way the NovelAI site does,
+  including **focused inpainting** for more detail in part of the image.
 - **A preview window** that shows the image forming while it generates, with **Generate**
   and **Add as layer** buttons, so you can keep trying until you get one you like.
 - **Tag autocomplete** in both prompt boxes. Typing Japanese also suggests the matching
@@ -89,29 +89,43 @@ the panel to that document's settings.
 
 ### What Generate does
 
-What Generate does depends on two things: the **Strength** slider, and whether part of the
-image is selected. The line under the slider always says which mode is active.
+What Generate does depends on two things: the **Strength** slider, and whether you've set an
+inpainting mask. The line under the slider always says which mode is active.
 
-| Selection | Strength | What happens |
-|-----------|----------|--------------|
+| Mask | Strength | What happens |
+|------|----------|--------------|
 | none | 100% | A new image for the whole canvas |
 | none | below 100% | The whole canvas is refined (image to image) |
-| yes | 100% | The selection is inpainted, using the area around it as context |
-| yes | below 100% | The selection is inpainted at that strength, so more of the original survives (V3 models use image to image instead) |
+| set | 100% | The masked area is regenerated |
+| set | below 100% | The masked area is regenerated at that strength, so more of the original survives (V4 and newer) |
 
 Lower strength keeps more of what's already there.
 
 ### Inpainting
 
-Select the area to change with any selection tool, set Strength, and click Generate.
+Click **Inpaint...** under the Strength slider. A window opens with a picture of your canvas.
+Scroll to zoom, and drag with the middle or right mouse button to move around.
 
-- The plugin sends the selection along with some of the canvas around it. **Settings →
-  Selection context** controls how much. More context helps the new content blend in.
-- The canvas is sent at its own resolution, like on the NovelAI site. A small selection is
-  not scaled up, because that would blur the result.
-- The new layer contains only the pixels NovelAI changed. That can include a few pixels past
-  the selection, where NovelAI blends the edges. To get NovelAI's whole image as the layer
-  instead, turn on **Settings → Inpainting: Add the whole image as the layer**.
+- **Brush** and **Eraser** paint the area to regenerate, in NovelAI's 8 x 8 pixel cells. If you
+  had something selected in Krita, it is already painted in.
+- **Focus** works on part of the canvas at a higher resolution. Drag a rectangle (up to 768 x
+  768 pixels of area) around, say, a face. It is enlarged to about one megapixel for
+  inpainting, so it gets more detail, and is free on Opus even on a big canvas. Paint inside it,
+  or leave it empty to regenerate all of it. **Minimum context** is the red border inside the
+  rectangle: NovelAI sees it, but only the part inside it changes. Drag the rectangle to move it;
+  the red border can hang off the edge of the canvas, so you can inpaint right up to the edge.
+
+Click **Use mask**. The button changes to **Edit mask...**, and every **Generate** now inpaints
+that area, so you can keep trying with a different seed. It works with what's on the canvas when
+you click **Generate**. **Clear mask** goes back to generating the whole image. Masks last
+until you clear them, switch document or change the canvas size, and aren't saved in the `.kra`.
+
+- Without Focus, the whole canvas is sent at its own size, as on the NovelAI site. A canvas
+  above **Max generation size** is scaled down to fit, and the result is scaled back up, which
+  softens it. Use Focus to keep full detail.
+- The new layer holds the new area, fading out just past its edges, the way the site blends it.
+  To get NovelAI's whole image as the layer instead, turn on **Settings → Inpainting: Add the
+  whole image as the layer**.
 
 ### Prompt tools
 
@@ -235,9 +249,8 @@ Click **Settings** in the panel:
 |---------|---------|--------------|
 | API token | — | Your NovelAI Persistent API Token. **Test** checks it. |
 | Max generation size | 1024 px | Generations are sized to about this many pixels squared. Above 1024 costs Anlas. |
-| Selection context | 20% | How much of the canvas around a selection is sent, relative to the selection's size. |
 | Autocomplete | on | Suggest tags while you type. |
-| Inpainting: Add the whole image as the layer | off | Use NovelAI's whole image as the layer instead of only the changed pixels. |
+| Inpainting: Add the whole image as the layer | off | Use NovelAI's whole image as the layer instead of only the inpainted area. |
 | Live preview | on | Show each step in the preview window while generating (V4 and newer). |
 | History size | 50 | How many results the history keeps. The oldest are dropped first. |
 
@@ -265,8 +278,8 @@ Click **Settings** in the panel:
   to finish.
 - **"Not enough Anlas":** the generation is over Opus's free limits (see the Costs Anlas
   note) and your balance can't cover it.
-- **The inpainted area doesn't blend in:** raise **Selection context** so NovelAI sees more
-  of the surrounding image.
+- **Changes leak outside the area, or it doesn't blend in:** paint the mask a little past what
+  you want changed. With Focus, raise **Minimum context** so NovelAI sees more around it.
 
 Bug reports and ideas are welcome in
 [Issues](https://github.com/Guppy779/NovelAI-Krita-plugin/issues).
@@ -284,7 +297,10 @@ plugin/
   novelai_krita/
     api.py                  Request payloads and response parsing (plain Python, tested)
     client.py               Async HTTP via QNetworkAccessManager
-    canvas.py               Reading the canvas/selection, inserting layers
+    canvas.py               Reading the canvas and selection, inserting layers
+    inpaint.py              Inpainting masks and what to send for them
+    inpaint_math.py         The sums behind inpainting (plain Python, tested)
+    inpaint_dialog.py       The Inpaint window
     docker.py               The docker UI
     characters.py           The Characters section of the docker
     doc_state.py            Per-document settings stored in the .kra (plain Python, tested)

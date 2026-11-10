@@ -23,7 +23,7 @@ try:
         QDoubleSpinBox, QFileDialog, QFormLayout, QFrame, QHBoxLayout,
         QLabel, QLineEdit, QListWidget, QListWidgetItem, QMenu, QMessageBox,
         QPlainTextEdit, QProgressBar, QPushButton, QScrollArea, QSlider, QSpinBox,
-        QToolButton, QVBoxLayout, QWidget, QWidgetAction,
+        QStyle, QStyledItemDelegate, QToolButton, QVBoxLayout, QWidget, QWidgetAction,
     )
 except ImportError:
     from PyQt6.QtCore import (  # noqa: F401
@@ -44,7 +44,7 @@ except ImportError:
         QDoubleSpinBox, QFileDialog, QFormLayout, QFrame, QHBoxLayout,
         QLabel, QLineEdit, QListWidget, QListWidgetItem, QMenu, QMessageBox,
         QPlainTextEdit, QProgressBar, QPushButton, QScrollArea, QSlider, QSpinBox,
-        QToolButton, QVBoxLayout, QWidget, QWidgetAction,
+        QStyle, QStyledItemDelegate, QToolButton, QVBoxLayout, QWidget, QWidgetAction,
     )
 
 

@@ -17,6 +17,61 @@ _ZOOM_STEP = 1.25  # Per notch of the wheel.
 _MARGIN = im.CONTEXT_MAX  # Canvas pixels of room around the picture, for the focus area.
 
 
+def mask_overlay(mask):
+    """The cells to regenerate as a see-through colour, one pixel per cell."""
+    cells = inpaint.effective_cells(mask)
+    overlay = QImage(cells.width(), cells.height(), QImage.Format.Format_ARGB32_Premultiplied)
+    overlay.fill(_MASK_COLOR)
+    painter = QPainter(overlay)
+    painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_DestinationIn)
+    painter.drawImage(0, 0, inpaint.as_alpha(cells))
+    painter.end()
+    return overlay
+
+
+def paint_focus(painter, mask, cell_rect):
+    """The focus area with its context in red. ``cell_rect(x, y, width, height)``
+    turns cells into a QRectF on the painter."""
+    outer = cell_rect(*mask.focus)
+    inner_cells = im.inner_rect(*mask.focus, mask.context)
+    if inner_cells is None:
+        painter.fillRect(outer, _CONTEXT_COLOR)
+    else:
+        inner = cell_rect(*inner_cells)
+        painter.fillRect(QRectF(outer.left(), outer.top(), outer.width(),
+                                inner.top() - outer.top()), _CONTEXT_COLOR)
+        painter.fillRect(QRectF(outer.left(), inner.bottom(), outer.width(),
+                                outer.bottom() - inner.bottom()), _CONTEXT_COLOR)
+        painter.fillRect(QRectF(outer.left(), inner.top(), inner.left() - outer.left(),
+                                inner.height()), _CONTEXT_COLOR)
+        painter.fillRect(QRectF(inner.right(), inner.top(), outer.right() - inner.right(),
+                                inner.height()), _CONTEXT_COLOR)
+    painter.setPen(QPen(QColor(255, 255, 255), 2))
+    painter.drawRect(outer)
+    painter.setPen(QPen(QColor(0, 0, 0), 1, Qt.PenStyle.DashLine))
+    painter.drawRect(outer)
+
+
+def mask_thumbnail(image, mask, side):
+    """A small picture of the canvas with the mask on it, at most ``side`` pixels.
+    ``image`` is the canvas at any size."""
+    picture = image.scaled(side, side, Qt.AspectRatioMode.KeepAspectRatio,
+                           Qt.TransformationMode.SmoothTransformation)
+    picture = picture.convertToFormat(QImage.Format.Format_ARGB32_Premultiplied)
+    size = im.CELL * picture.width() / float(mask.canvas_size[0])  # Of one cell.
+
+    def cell_rect(x, y, width, height):
+        return QRectF(x * size, y * size, width * size, height * size)
+
+    painter = QPainter(picture)
+    painter.drawImage(cell_rect(0, 0, mask.cells.width(), mask.cells.height()),
+                      mask_overlay(mask))
+    if mask.focus is not None:
+        paint_focus(painter, mask, cell_rect)
+    painter.end()
+    return picture
+
+
 class _MaskCanvas(QWidget):
     """The picture, with the mask on top of it. Editing happens in cells."""
 
@@ -97,17 +152,6 @@ class _MaskCanvas(QWidget):
 
     # ---- Painting the widget ------------------------------------------------
 
-    def _rebuild_overlay(self):
-        cells = inpaint.effective_cells(self.mask)
-        overlay = QImage(cells.width(), cells.height(),
-                         QImage.Format.Format_ARGB32_Premultiplied)
-        overlay.fill(_MASK_COLOR)
-        painter = QPainter(overlay)
-        painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_DestinationIn)
-        painter.drawImage(0, 0, inpaint.as_alpha(cells))
-        painter.end()
-        self._overlay = overlay
-
     def changed(self):
         self._overlay = None
         self.update()
@@ -122,40 +166,20 @@ class _MaskCanvas(QWidget):
         painter.setClipRect(target)
 
         if self._overlay is None:
-            self._rebuild_overlay()
+            self._overlay = mask_overlay(self.mask)
         painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, False)
         painter.drawImage(self._cell_rect(0, 0, self.mask.cells.width(), self.mask.cells.height()),
                           self._overlay)
 
         painter.setClipping(False)  # The focus area can reach past the picture.
         if self.mask.focus is not None:
-            self._paint_focus(painter)
+            paint_focus(painter, self.mask, self._cell_rect)
         if self._mouse is not None and self.tool != FOCUS:
             radius = self.brush * im.CELL * scale / 2.0
             painter.setPen(QPen(QColor(255, 255, 255), 1))
             painter.drawEllipse(self._mouse, radius, radius)
             painter.setPen(QPen(QColor(0, 0, 0), 1))
             painter.drawEllipse(self._mouse, radius + 1, radius + 1)
-
-    def _paint_focus(self, painter):
-        outer = self._cell_rect(*self.mask.focus)
-        inner_cells = im.inner_rect(*self.mask.focus, self.mask.context)
-        if inner_cells is None:
-            painter.fillRect(outer, _CONTEXT_COLOR)
-        else:
-            inner = self._cell_rect(*inner_cells)
-            painter.fillRect(QRectF(outer.left(), outer.top(), outer.width(),
-                                    inner.top() - outer.top()), _CONTEXT_COLOR)
-            painter.fillRect(QRectF(outer.left(), inner.bottom(), outer.width(),
-                                    outer.bottom() - inner.bottom()), _CONTEXT_COLOR)
-            painter.fillRect(QRectF(outer.left(), inner.top(), inner.left() - outer.left(),
-                                    inner.height()), _CONTEXT_COLOR)
-            painter.fillRect(QRectF(inner.right(), inner.top(), outer.right() - inner.right(),
-                                    inner.height()), _CONTEXT_COLOR)
-        painter.setPen(QPen(QColor(255, 255, 255), 2))
-        painter.drawRect(outer)
-        painter.setPen(QPen(QColor(0, 0, 0), 1, Qt.PenStyle.DashLine))
-        painter.drawRect(outer)
 
     def resizeEvent(self, event):
         self._limit_pan()

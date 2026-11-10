@@ -6,11 +6,46 @@ docker decides what they do.
 
 from . import settings
 from .qt import (
-    QAbstractItemView, QByteArray, QHBoxLayout, QLabel, QListWidget, QPainter, QProgressBar,
-    QPushButton, QRectF, QSize, Qt, QVBoxLayout, QWidget,
+    QAbstractItemView, QByteArray, QHBoxLayout, QLabel, QListWidget, QPainter, QPen,
+    QProgressBar, QPushButton, QRectF, QSize, QStyle, QStyledItemDelegate, Qt, QVBoxLayout,
+    QWidget,
 )
 
 THUMBNAIL_SIZE = 96
+_THUMBNAIL_PADDING = 4
+
+
+class _ThumbnailDelegate(QStyledItemDelegate):
+    """Draws a result as just its picture, framed when it's the one shown.
+
+    The style's own drawing keeps a line for text under each picture, and
+    highlights it when selected, even with no text.
+    """
+
+    def sizeHint(self, option, index):
+        side = THUMBNAIL_SIZE + 2 * _THUMBNAIL_PADDING
+        return QSize(side, side)
+
+    def paint(self, painter, option, index):
+        icon = index.data(Qt.ItemDataRole.DecorationRole)
+        if icon is None:
+            return
+        cell = QRectF(option.rect)
+        size = icon.actualSize(QSize(THUMBNAIL_SIZE, THUMBNAIL_SIZE))
+        picture = QRectF(cell.center().x() - size.width() / 2.0,
+                         cell.center().y() - size.height() / 2.0, size.width(), size.height())
+        painter.save()
+        icon.paint(painter, picture.toRect())
+        if option.state & QStyle.StateFlag.State_Selected:
+            painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+            painter.setPen(QPen(option.palette.windowText().color(), 2))
+            painter.drawRoundedRect(picture.adjusted(-2, -2, 2, 2), 3, 3)
+        elif option.state & QStyle.StateFlag.State_MouseOver:
+            color = option.palette.windowText().color()
+            color.setAlpha(90)
+            painter.setPen(QPen(color, 1))
+            painter.drawRect(picture.adjusted(-1, -1, 0, 0))
+        painter.restore()
 
 
 class _ImageView(QWidget):
@@ -76,6 +111,8 @@ class PreviewWindow(QWidget):
         self.history.setFlow(QListWidget.Flow.LeftToRight)
         self.history.setWrapping(False)
         self.history.setIconSize(QSize(THUMBNAIL_SIZE, THUMBNAIL_SIZE))
+        self.history.setItemDelegate(_ThumbnailDelegate(self.history))
+        self.history.setMouseTracking(True)  # For the frame on hover.
         self.history.setMovement(QListWidget.Movement.Static)
         self.history.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self.history.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)

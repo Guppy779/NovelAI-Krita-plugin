@@ -115,8 +115,8 @@ Scroll to zoom, and drag with the middle or right mouse button to move around.
   rectangle: NovelAI sees it, but only the part inside it changes. Drag the rectangle to move it;
   the red border can hang off the edge of the canvas, so you can inpaint right up to the edge.
 
-Click **Use mask**. The button changes to **Edit mask...**, and every **Generate** now inpaints
-that area, so you can keep trying with a different seed. It works with what's on the canvas when
+Click **Use mask**. The button changes to **Edit mask...**, a small picture of the mask appears
+next to it (click it to edit the mask too), and every **Generate** now inpaints that area, so you can keep trying with a different seed. It works with what's on the canvas when
 you click **Generate**. **Clear mask** goes back to generating the whole image. Masks last
 until you clear them, switch document or change the canvas size, and aren't saved in the `.kra`.
 

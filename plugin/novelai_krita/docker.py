@@ -11,15 +11,18 @@ from .characters import CharacterEditor
 from .client import NovelAIClient
 from .import_dialog import ImportDialog, LABELS as IMPORT_LABELS, read_image
 from .inpaint_dialog import InpaintDialog
+from .inpaint_dialog import mask_thumbnail
 from .preview import PreviewWindow, THUMBNAIL_SIZE
 from .prompt_edit import PromptEdit
 from .settings_dialog import SettingsDialog, max_pixels
 from .qt import (
     QCheckBox, QComboBox, QDoubleSpinBox, QFileDialog, QFormLayout, QFrame, QHBoxLayout,
     QIcon, QImage, QLabel, QLineEdit, QListWidgetItem, QMenu, QMessageBox, QPixmap,
-    QProgressBar, QPushButton, QScrollArea, QSlider, QSpinBox, Qt, QTimer, QToolButton,
+    QProgressBar, QPushButton, QScrollArea, QSize, QSlider, QSpinBox, Qt, QTimer, QToolButton,
     QVBoxLayout, QWidget, ignore_wheel,
 )
+
+MASK_THUMBNAIL_SIZE = 64
 
 
 @dataclass
@@ -61,6 +64,7 @@ class NovelAIDocker(DockWidget):
         self._next_id = 0
         self.preview = PreviewWindow()  # Shows the image forming, and the results.
         self._mask = None  # The active document's inpainting mask.
+        self._mask_picture = None  # What the mask thumbnail shows.
         # Each document keeps its own prompt and settings (see doc_state.py).
         self._doc = None  # The document the panel currently shows.
         self._loading = False  # Filling the panel from a document's settings.
@@ -166,9 +170,21 @@ class NovelAIDocker(DockWidget):
         self.clear_mask_button.setToolTip("Go back to generating the whole image.")
         self.clear_mask_button.clicked.connect(self._clear_mask)
         self.clear_mask_button.setVisible(False)
+        # The mask on a small copy of the canvas, as the site shows it.
+        self.mask_thumbnail = QToolButton()
+        self.mask_thumbnail.setAutoRaise(True)
+        self.mask_thumbnail.setIconSize(QSize(MASK_THUMBNAIL_SIZE, MASK_THUMBNAIL_SIZE))
+        self.mask_thumbnail.setToolTip("The inpainting mask. Click to edit it.")
+        self.mask_thumbnail.clicked.connect(self.open_inpaint)
+        self.mask_thumbnail.setVisible(False)
+        buttons = QVBoxLayout()
+        buttons.addStretch(1)
+        buttons.addWidget(self.inpaint_button)
+        buttons.addWidget(self.clear_mask_button)
+        buttons.addStretch(1)
         row = QHBoxLayout()
-        row.addWidget(self.inpaint_button, 1)
-        row.addWidget(self.clear_mask_button, 1)
+        row.addWidget(self.mask_thumbnail)
+        row.addLayout(buttons, 1)
         layout.addLayout(row)
         self.mode_label = QLabel()
         self.mode_label.setWordWrap(True)
@@ -420,6 +436,7 @@ class NovelAIDocker(DockWidget):
         if doc is None:
             text = "Open a document to generate."
         elif self._active_mask(doc) is not None:
+            self._update_mask_thumbnail(doc)  # The canvas may have changed.
             place = "focus area" if self._mask.focus is not None else "masked area"
             # V3 inpainting has no strength.
             if value >= 100 or not api.is_v4(self._model_name()):
@@ -623,9 +640,19 @@ class NovelAIDocker(DockWidget):
 
     def _set_mask(self, mask):
         self._mask = mask
+        self._mask_picture = None
+        self.mask_thumbnail.setVisible(mask is not None)
         self.characters.set_model(self._generating_model())
         self.inpaint_button.setText("Edit mask..." if mask is not None else "Inpaint...")
         self.clear_mask_button.setVisible(mask is not None)
+
+    def _update_mask_thumbnail(self, doc):
+        """Show the mask on the canvas as it is now."""
+        picture = mask_thumbnail(canvas.small_image(doc, MASK_THUMBNAIL_SIZE), self._mask,
+                                 MASK_THUMBNAIL_SIZE)
+        if picture != self._mask_picture:  # Only redraw when something changed.
+            self._mask_picture = picture
+            self.mask_thumbnail.setIcon(QIcon(QPixmap.fromImage(picture)))
 
     def _clear_mask(self):
         self._set_mask(None)

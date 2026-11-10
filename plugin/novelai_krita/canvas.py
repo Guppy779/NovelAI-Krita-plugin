@@ -58,6 +58,20 @@ def read_image(doc, region: Region) -> QImage:
     return flat
 
 
+def small_image(doc, side: int) -> QImage:
+    """The visible canvas at most ``side`` pixels across, flattened onto white.
+
+    Krita keeps it cheap: nothing like reading the whole canvas.
+    """
+    thumbnail = doc.thumbnail(side, side)
+    flat = QImage(thumbnail.size(), QImage.Format.Format_RGB32)
+    flat.fill(QColor(255, 255, 255))
+    painter = QPainter(flat)
+    painter.drawImage(0, 0, thumbnail)
+    painter.end()
+    return flat
+
+
 def resize(image: QImage, width: int, height: int) -> QImage:
     if image.width() == width and image.height() == height:
         return image

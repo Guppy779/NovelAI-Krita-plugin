@@ -10,8 +10,7 @@ from . import api, canvas, doc_state, inpaint, inpaint_math, metadata, presets, 
 from .characters import CharacterEditor
 from .client import NovelAIClient
 from .import_dialog import ImportDialog, LABELS as IMPORT_LABELS, read_image
-from .inpaint_dialog import InpaintDialog
-from .inpaint_dialog import mask_thumbnail
+from .inpaint_dialog import InpaintDialog, mask_thumbnail
 from .preview import PreviewWindow, THUMBNAIL_SIZE
 from .prompt_edit import PromptEdit
 from .settings_dialog import SettingsDialog, max_pixels

@@ -105,6 +105,10 @@ inpainting mask. The line under the slider always says which mode is active.
 
 Lower strength keeps more of what's already there.
 
+When the canvas is sent, it goes the way the NovelAI site sends a picture you upload, pixel
+for pixel. Image to image with the same picture, settings and seed gives the same image as
+on the site. Clear parts of the canvas are sent as white.
+
 ### Inpainting
 
 Click **Inpaint...** under the Strength slider. A window opens with a picture of your canvas.
@@ -375,7 +379,8 @@ plugin/
 scripts/
   install_dev.py            Link the plugin into Krita's pykrita folder (--remove to undo)
   package.py                Build dist/novelai_krita.zip
-tests/                      pytest tests for the plain-Python modules
+tests/                      pytest tests for the plain-Python modules (test_canvas.py needs
+                            PyQt as well, and is skipped without it)
 ```
 
 To work on the plugin against your own Krita, link it once, then restart Krita after each

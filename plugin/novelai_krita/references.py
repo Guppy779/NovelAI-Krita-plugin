@@ -323,7 +323,11 @@ class ReferenceEditor(QWidget):
         except OSError as exc:
             self._say("Could not read %s: %s." % (name, exc.strerror or exc))
             return
-        if too_large or not self.add_image(read_picture(path)):
+        if too_large:
+            self._say("%s is too large for a reference (over %d MB)."
+                      % (name, MAX_FILE_SIZE // (1024 * 1024)))
+            return
+        if not self.add_image(read_picture(path)):
             if len(self._cards) < api.MAX_REFERENCES:
                 self._say("Could not read %s as an image." % name)
             return

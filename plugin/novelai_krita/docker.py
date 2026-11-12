@@ -127,7 +127,8 @@ class NovelAIDocker(DockWidget):
         # Precise references (V4.5). They cost Anlas, so the cost note follows
         # them. Each document has its own, but they aren't part of its stored
         # settings: the editor keeps them, and only while the document is open.
-        self.references = ReferenceEditor(self._update_mode, self._say, self._canvas_picture)
+        self.references = ReferenceEditor(
+            self._update_mode, self._say, self._canvas_picture, self._follow_document)
         layout.addWidget(self.references)
 
         # Quality tags and Undesired Content preset, as on the NovelAI site:

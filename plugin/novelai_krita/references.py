@@ -193,12 +193,14 @@ class ReferenceEditor(QWidget):
     """The list of references, with Add.
 
     ``say(text)`` shows a message; ``canvas_picture()`` gives the canvas as a
-    QImage, or None if no document is open.
+    QImage, or None if no document is open; ``follow()`` has the panel notice
+    that another document became active, which ends in set_document here.
     """
 
-    def __init__(self, on_changed, say, canvas_picture, parent=None):
+    def __init__(self, on_changed, say, canvas_picture, follow, parent=None):
         super().__init__(parent)
         self._on_changed, self._say, self._canvas_picture = on_changed, say, canvas_picture
+        self._follow = follow
         self._cards = []  # The ones shown.
         self._doc = None  # The document they belong to.
         self._others = []  # (document, cards) for the other open documents.
@@ -293,6 +295,7 @@ class ReferenceEditor(QWidget):
 
     def add_image(self, image):
         """Add ``image`` (a QImage) as a reference. False if it couldn't be."""
+        self._follow()  # It's for the document that is active now.
         if len(self._cards) >= api.MAX_REFERENCES:
             self._say("NovelAI takes at most %d precise references." % api.MAX_REFERENCES)
             return False
@@ -337,6 +340,9 @@ class ReferenceEditor(QWidget):
             self._say("Added the canvas as a precise reference.")
 
     def remove(self, card):
+        self._follow()
+        if card not in self._cards:
+            return  # Another document became active: its references are shown now.
         self._cards.remove(card)
         self._list.removeWidget(card)
         self._discard([card])

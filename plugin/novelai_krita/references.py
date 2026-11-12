@@ -180,6 +180,13 @@ class ReferenceCard(QFrame):
         layout.addWidget(thumbnail)
         layout.addLayout(controls, 1)
         ignore_wheel(self)  # Scrolling the panel mustn't change these.
+        self._greyed = [thumbnail, self.enabled, self.kind, self.strength, self.fidelity] + labels
+
+    def set_used(self, used):
+        """Grey the card out while the model takes no references. Removing it
+        still works."""
+        for widget in self._greyed:
+            widget.setEnabled(used)
 
     def request(self):
         """This reference as it goes in a request."""
@@ -401,7 +408,8 @@ class ReferenceEditor(QWidget):
 
     def _refresh(self):
         supported = api.supports_references(self._model)
-        self._holder.setEnabled(supported)
+        for card in self._cards:
+            card.set_used(supported)
         self._holder.setVisible(bool(self._cards))
         if self._cards and not supported:
             text = ("Precise reference needs V4.5 Full or V4.5 Curated. These aren't used "

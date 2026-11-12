@@ -56,3 +56,12 @@ def test_damaged_characters_are_repaired_or_dropped():
 
 def test_characters_are_not_remembered_for_new_documents():
     assert "characters" in doc_state.PROMPTS
+
+
+def test_precise_references_stay_out_of_the_document():
+    # On purpose: their pictures would add megabytes to every .kra.
+    references = [{"image": "0123abcd", "kind": "character", "strength": 0.8}]
+    data = doc_state.encode(dict(STATE, references=references))
+    assert b"references" not in data and b"0123abcd" not in data
+    stored = json.dumps({"steps": 20, "references": references}).encode()
+    assert doc_state.decode(stored) == {"steps": 20}

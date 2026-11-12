@@ -116,11 +116,15 @@ def sharp_resize(image: QImage, width: int, height: int) -> QImage:
     return QImage(data, width, height, width * 4, QImage.Format.Format_ARGB32).copy()
 
 
-def to_base64_png(image: QImage) -> str:
+def to_png(image: QImage) -> bytes:
     buffer = QBuffer()
     buffer.open(QIODevice.OpenModeFlag.WriteOnly)
     image.save(buffer, "PNG")
-    return base64.b64encode(bytes(buffer.data())).decode("ascii")
+    return bytes(buffer.data())
+
+
+def to_base64_png(image: QImage) -> str:
+    return base64.b64encode(to_png(image)).decode("ascii")
 
 
 def _apply_alpha(image: QImage, mask: QImage) -> None:

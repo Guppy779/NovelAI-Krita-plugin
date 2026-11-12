@@ -28,6 +28,7 @@ DEFAULTS = {
     "max_pixels": str(api.FREE_MAX_PIXELS),
     "show_advanced": "false",
     "save_dir": "",
+    "reference_dir": "",
     "autocomplete": "true",
     "inpaint_full_image": "false",
     "live_preview": "true",

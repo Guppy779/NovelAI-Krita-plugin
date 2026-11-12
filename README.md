@@ -23,6 +23,8 @@ or Anlatan.
   applies them.
 - **Character prompts** (V4 and newer): a prompt and undesired content for each character,
   placed where the AI chooses or at positions you pick.
+- **Precise reference** (V4.5): give NovelAI a picture to take a character, a style or both
+  from, with the site's Strength and Fidelity sliders.
 - **Import from an image**: drop a NovelAI image on a prompt box to reuse its prompt,
   undesired content, characters, settings or seed.
 - **Your account at a glance**: your plan, Anlas and remaining V5 allowance.
@@ -86,6 +88,8 @@ the panel to that document's settings.
   generation and empty prompts.
 - Changing only the prompt doesn't mark the document as modified, so save it yourself if
   you want to keep a prompt you haven't generated with yet.
+- Precise references aren't part of this: they stay in the panel for every document, and
+  aren't saved in the `.kra`.
 
 ### What Generate does
 
@@ -184,6 +188,46 @@ document starts without characters.
 You can also use `source#`, `target#` and `mutual#` in front of an action tag for
 interactions, for example `source#hug` in one character and `target#hug` in the other.
 
+### Precise reference
+
+A precise reference is a picture for NovelAI to take a character, a style or both from. It
+works like **Precise Reference** on the NovelAI site, and only with **V4.5 Full** and **V4.5
+Curated**. NovelAI doesn't offer it for V5 yet. With another model selected the references
+stay in the panel, greyed out, and aren't sent.
+
+Click **+ Add** next to **Precise Reference** and choose **From file...** or **From canvas**
+(the whole visible canvas), or drop an image file on the section. Each reference has:
+
+- **A checkbox:** untick it to leave the reference out without deleting it.
+- **A type:**
+  - **Character & Style** takes the character's looks and the art style.
+  - **Character** takes only the character's looks.
+  - **Style** takes only the art style.
+- **Strength:** how strongly the reference is followed. Lower it if poses and expressions
+  copy the reference too closely.
+- **Fidelity:** how exactly the reference is applied. At 1 it is hard to change with the
+  prompt, and lower values give the prompt more say.
+- **✕:** removes the reference.
+
+Both sliders run from 0 to 1. Type in the number box to go beyond that, below 0 included, as
+on the site.
+
+Things to know:
+
+- **It always costs Anlas:** 5 per reference for each image, on top of the normal price, on
+  Opus too. The **Costs Anlas** note shows the amount.
+- **Size:** NovelAI takes references at 1024 × 1536, 1536 × 1024 or 1472 × 1472. Your picture is
+  scaled to fit the nearest of those, with black around it where it doesn't fill it.
+- **Several references:** you can add up to 16 and mix types, such as one character and one
+  style. Several character references blend into one character.
+- **Inpainting:** references are used when you inpaint as well.
+- **Not saved:** references stay in the panel, whichever document is open, until you remove
+  them or close Krita. They aren't stored in the `.kra`, which keeps your files small, so
+  add them again after restarting Krita.
+
+NovelAI's [Precise Reference guide](https://docs.novelai.net/en/image/precisereference) has
+tips on what makes a good reference picture.
+
 ### Import from an image
 
 Drag an image made with NovelAI from your file browser onto either prompt box. A dialog
@@ -223,6 +267,7 @@ mode text and says why. Possible reasons:
 - More than one image is requested.
 - The V5 allowance is used up.
 - Your plan has no free generations.
+- A precise reference is used (5 Anlas each per image, on every plan).
 
 To keep generating for free on Opus, keep **Settings → Max generation size** at 1024.
 
@@ -262,7 +307,8 @@ Click **Settings** in the panel:
   Share a `.kra` file and its prompts go with it. `kritarc` keeps the other settings of
   your last generation, for new documents.
 - The plugin talks only to `image.novelai.net`. It sends your prompts, and when you refine or
-  inpaint, the part of the canvas being worked on.
+  inpaint, the part of the canvas being worked on. Precise reference pictures are sent with
+  each generation that uses them, and aren't stored anywhere by the plugin.
 - The plugin does not save results to disk on its own. Only **Save image…** writes a file.
 - **Import from an image** reads the image on your computer. Nothing from it is sent anywhere.
 
@@ -286,7 +332,8 @@ Bug reports and ideas are welcome in
 
 ## Roadmap
 
-- Vibe transfer and precise reference, once they work with V5
+- Vibe transfer
+- Precise reference for V5, once NovelAI supports it
 - Director tools and upscaling
 
 ## Development
@@ -303,6 +350,7 @@ plugin/
     inpaint_dialog.py       The Inpaint window
     docker.py               The docker UI
     characters.py           The Characters section of the docker
+    references.py           The Precise Reference section of the docker
     doc_state.py            Per-document settings stored in the .kra (plain Python, tested)
     metadata.py             Reading NovelAI's prompt and settings from images (plain Python, tested)
     import_dialog.py        The Import from image dialog

@@ -65,10 +65,12 @@ MAX_SEED = 2**32 - 1
 
 
 def anlas_warnings(width: int, height: int, steps: int, n_samples: int,
-                   model: str = "", account: "Optional[Account]" = None) -> List[str]:
+                   model: str = "", account: "Optional[Account]" = None,
+                   references: int = 0) -> List[str]:
     """Reasons a generation would cost Anlas (empty when it's free).
 
     Without ``account`` (not loaded yet) an Opus plan is assumed.
+    ``references``: how many precise references are sent.
     """
     if account is not None and account.tier is not None and not account.is_opus:
         return ["free generations need an Opus plan (yours: %s)" % account.plan_name]
@@ -82,6 +84,9 @@ def anlas_warnings(width: int, height: int, steps: int, n_samples: int,
         reasons.append("%d steps (free up to %d)" % (steps, FREE_MAX_STEPS))
     if n_samples > FREE_MAX_IMAGES:
         reasons.append("%d images per request (free: %d)" % (n_samples, FREE_MAX_IMAGES))
+    if references:
+        reasons.append("%d precise reference%s (%d Anlas per image)" % (
+            references, "" if references == 1 else "s", references * REFERENCE_ANLAS))
     return reasons
 
 
@@ -196,6 +201,62 @@ def character_position(model: str, x: float, y: float) -> Tuple[float, float]:
     return snap_to_grid(x), snap_to_grid(y)
 
 
+# ---- Precise reference -------------------------------------------------------
+# An image for NovelAI to take a character, a style or both from. What's sent
+# follows the NovelAI site.
+
+REFERENCE_TYPES = [
+    ("character&style", "Character & Style"),
+    ("character", "Character"),
+    ("style", "Style"),
+]
+DEFAULT_REFERENCE_TYPE = "character&style"
+# A reference is sent at one of these sizes, padded with black to fit.
+REFERENCE_SIZES = ((1024, 1536), (1536, 1024), (1472, 1472))
+MAX_REFERENCES = 16
+REFERENCE_ANLAS = 5  # Per reference and image, on top of the price, on every plan.
+
+
+def supports_references(model: str) -> bool:
+    """True for the models that take precise references (V4.5 only so far)."""
+    return presets.model_key(model) in ("4-5-full", "4-5-curated")
+
+
+def _round(value: float) -> int:
+    return int(math.floor(value + 0.5))  # Halves go up, as the site rounds.
+
+
+def reference_layout(width: int, height: int):
+    """How an image of (width, height) is sent as a reference:
+    ((sent width, sent height), (image width, image height), (left, top)).
+
+    It goes at the size nearest its shape, scaled to fit inside and centred.
+    """
+    if width <= 0 or height <= 0:
+        raise ValueError("width and height must be positive")
+    ratio = width / float(height)
+    sent = REFERENCE_SIZES[0]
+    for size in REFERENCE_SIZES:
+        if abs(size[0] / float(size[1]) - ratio) < abs(sent[0] / float(sent[1]) - ratio):
+            sent = size
+    if ratio > sent[0] / float(sent[1]):
+        fitted = sent[0], max(1, _round(sent[0] / ratio))
+    else:
+        fitted = max(1, _round(sent[1] * ratio)), sent[1]
+    return sent, fitted, (_round((sent[0] - fitted[0]) / 2.0), _round((sent[1] - fitted[1]) / 2.0))
+
+
+@dataclass
+class Reference:
+    """A precise reference. The numbers are the site's sliders (0 to 1)."""
+
+    image: str  # Base64 PNG at one of REFERENCE_SIZES.
+    kind: str = DEFAULT_REFERENCE_TYPE
+    strength: float = 1.0
+    fidelity: float = 1.0
+    enabled: bool = True
+
+
 @dataclass
 class GenerationParams:
     prompt: str
@@ -216,6 +277,8 @@ class GenerationParams:
     # ``use_coords``: place them at their positions, not where the AI chooses.
     characters: List[CharacterPrompt] = field(default_factory=list)
     use_coords: bool = False
+    # Precise references (V4.5). Disabled ones aren't sent.
+    references: List[Reference] = field(default_factory=list)
     # Image to image / inpainting. ``image`` and ``mask`` are base64 PNGs of
     # exactly width x height pixels; white in the mask means "regenerate".
     # Sent masks follow NovelAI's grid of 8 x 8 pixel cells.
@@ -303,6 +366,22 @@ def build_payload(p: GenerationParams) -> dict:
         })
     else:
         params.update({"sm": False, "sm_dyn": False})
+
+    # The selected model decides, as on the site: V5 Curated inpaints with
+    # V4.5 Curated's model, but takes no references.
+    references = [r for r in p.references if r.enabled and r.image]
+    if references and supports_references(p.model):
+        params.update({
+            "director_reference_images": [r.image for r in references],
+            "director_reference_descriptions": [
+                {"caption": {"base_caption": r.kind, "char_captions": []}, "legacy_uc": False}
+                for r in references],
+            "director_reference_information_extracted": [1 for _ in references],
+            "director_reference_strength_values": [float(r.strength) for r in references],
+            # The site's Fidelity slider is sent the other way round.
+            "director_reference_secondary_strength_values": [
+                round(1.0 - float(r.fidelity), 6) for r in references],
+        })
 
     if p.sampler == "k_euler_ancestral" and params["noise_schedule"] != "native":
         params.update({"deliberate_euler_ancestral_bug": False, "prefer_brownian": True})

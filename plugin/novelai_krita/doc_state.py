@@ -36,6 +36,8 @@ FIELDS = {
 }
 # Kept per document only; new documents start with these empty.
 PROMPTS = ("prompt", "negative_prompt", "characters")
+# Precise references aren't here on purpose: their pictures would add megabytes
+# to every .kra. They stay in the panel instead (see references.py).
 
 
 def _character(item: Any):

@@ -45,6 +45,26 @@ character and describe it with <i>girl</i>, <i>boy</i> or <i>other</i> (no numbe
       describe interactions, e.g. <i>source#hug</i> and <i>target#hug</i>.</li>
 </ul>
 <p>Characters are saved with the document. New documents start without them.</p>
+<h4>Precise reference</h4>
+<p>A picture for NovelAI to take a character, a style or both from, as on the NovelAI
+site. <b>V4.5 Full</b> and <b>V4.5 Curated</b> only; with another model the references
+are greyed out and aren't sent.</p>
+<ul>
+  <li><b>+ Add</b> takes a picture <b>From file...</b> or <b>From canvas</b>. You can
+      also drop an image file on the section.</li>
+  <li>Choose what's taken from it: <b>Character &amp; Style</b>, <b>Character</b> or
+      <b>Style</b>.</li>
+  <li><b>Strength</b> is how strongly the reference is followed; lower it if poses and
+      expressions copy it too closely. <b>Fidelity</b> is how exactly it is applied;
+      lower values give the prompt more say. Type in the number boxes to go beyond 0
+      to 1, below 0 included.</li>
+  <li>Untick a reference to leave it out without deleting it; &#x2715; removes it.</li>
+  <li>Each reference costs <b>5 Anlas per image</b> on top of the normal price, on Opus
+      too.</li>
+  <li>Up to 16 references. Several character references blend into one character.</li>
+  <li>References stay in the panel, whichever document is open, until you remove them
+      or close Krita. They aren't saved in the <i>.kra</i>, to keep your files small.</li>
+</ul>
 <h4>Anlas and V5 allowance</h4>
 <p>The line under the model shows your plan, your Anlas and, on Opus, how much of
 the V5 allowance is left (e.g. <i>Opus &middot; 12,500 Anlas &middot; V5 85%</i>). Hover it for
@@ -52,8 +72,8 @@ details such as when the allowance next refills. It updates after every generati
 <b>Refresh</b> checks again.</p>
 <p>Opus subscribers generate for free up to 1024 x 1024 pixels, 28 steps and one
 image per request (V5 models also use the V5 allowance). When the next generation
-would cost Anlas (over one of these limits, V5 allowance used up, or a plan
-without free generations), an orange <b>Costs Anlas</b> note under the mode
+would cost Anlas (over one of these limits, V5 allowance used up, a precise
+reference, or a plan without free generations), an orange <b>Costs Anlas</b> note under the mode
 description says why.</p>
 <h4>Preview window</h4>
 <p>Generating opens a window that stays above Krita and doesn't block it. With V4

@@ -407,3 +407,89 @@ def test_grid_positions():
     assert api.snap_to_grid(0.0) == 0.1 and api.snap_to_grid(1.0) == 0.9
     assert api.character_position("nai-diffusion-4-full", 0.394, 0.462) == (0.3, 0.5)
     assert api.character_position("nai-diffusion-5-full", 0.3944, 0.462) == (0.394, 0.462)
+
+
+# ---- Precise reference ----
+
+@pytest.mark.parametrize("model, expected", [
+    ("nai-diffusion-4-5-full", True), ("nai-diffusion-4-5-curated", True),
+    ("nai-diffusion-4-5-full-inpainting", True),
+    ("nai-diffusion-5-full", False), ("nai-diffusion-5-curated", False),
+    ("nai-diffusion-4-full", False), ("nai-diffusion-3", False), ("something-new", False),
+])
+def test_only_v45_takes_references(model, expected):
+    assert api.supports_references(model) is expected
+
+
+@pytest.mark.parametrize("size, sent, fitted, corner", [
+    ((1024, 1536), (1024, 1536), (1024, 1536), (0, 0)),  # Already right.
+    ((832, 1216), (1024, 1536), (1024, 1497), (0, 20)),  # Scaled up, bars above and below.
+    ((3000, 2000), (1536, 1024), (1536, 1024), (0, 0)),  # Scaled down.
+    ((1920, 1080), (1536, 1024), (1536, 864), (0, 80)),
+    ((500, 500), (1472, 1472), (1472, 1472), (0, 0)),
+    ((100, 1000), (1024, 1536), (154, 1536), (435, 0)),  # Very tall: bars at the sides.
+    ((900, 1000), (1472, 1472), (1325, 1472), (74, 0)),  # Nearer square than portrait.
+])
+def test_reference_layout_follows_the_site(size, sent, fitted, corner):
+    assert api.reference_layout(*size) == (sent, fitted, corner)
+
+
+def test_reference_layout_rejects_empty():
+    with pytest.raises(ValueError):
+        api.reference_layout(0, 10)
+
+
+def reference_params(**changes):
+    values = dict(prompt="1girl", model="nai-diffusion-4-5-full", references=[
+        api.Reference("QUJD", "character", 0.8, 0.95),
+        api.Reference("REVG", "style", 1.0, 1.0, enabled=False),
+        api.Reference("R0hJ"),
+    ])
+    values.update(changes)
+    return api.build_payload(api.GenerationParams(**values))["parameters"]
+
+
+def test_reference_payload_matches_the_site():
+    parameters = reference_params()
+    assert parameters["director_reference_images"] == ["QUJD", "R0hJ"]  # Not the disabled one.
+    assert parameters["director_reference_descriptions"] == [
+        {"caption": {"base_caption": "character", "char_captions": []}, "legacy_uc": False},
+        {"caption": {"base_caption": "character&style", "char_captions": []}, "legacy_uc": False},
+    ]
+    assert parameters["director_reference_information_extracted"] == [1, 1]
+    assert parameters["director_reference_strength_values"] == [0.8, 1.0]
+    # Fidelity goes the other way round: 1 is sent as 0.
+    assert parameters["director_reference_secondary_strength_values"] == [0.05, 0.0]
+
+
+@pytest.mark.parametrize("model", ["nai-diffusion-5-full", "nai-diffusion-5-curated",
+                                   "nai-diffusion-4-full", "nai-diffusion-3"])
+def test_references_are_left_out_for_other_models(model):
+    assert not any("director_reference" in key for key in reference_params(model=model))
+
+
+def test_no_references_sends_nothing_about_them():
+    parameters = reference_params(references=[])
+    assert not any("director_reference" in key for key in parameters)
+    parameters = reference_params(references=[api.Reference("QUJD", enabled=False)])
+    assert not any("director_reference" in key for key in parameters)
+
+
+def test_references_go_with_inpainting():
+    parameters = reference_params(image="aW1hZ2U=", mask="bWFzaw==")
+    assert parameters["director_reference_images"] == ["QUJD", "R0hJ"]
+
+
+def test_v5_curated_inpainting_takes_no_references():
+    # It inpaints with V4.5 Curated's model, but the site sends none for it.
+    parameters = reference_params(model="nai-diffusion-5-curated", image="aW1hZ2U=",
+                                  mask="bWFzaw==")
+    assert not any("director_reference" in key for key in parameters)
+
+
+def test_references_always_cost_anlas():
+    assert api.anlas_warnings(832, 1216, 28, 1) == []
+    assert api.anlas_warnings(832, 1216, 28, 1, references=1) == [
+        "1 precise reference (5 Anlas per image)"]
+    assert api.anlas_warnings(832, 1216, 28, 1, references=3) == [
+        "3 precise references (15 Anlas per image)"]

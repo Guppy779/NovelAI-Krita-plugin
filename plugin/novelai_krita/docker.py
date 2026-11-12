@@ -13,6 +13,7 @@ from .import_dialog import ImportDialog, LABELS as IMPORT_LABELS, read_image
 from .inpaint_dialog import InpaintDialog, mask_thumbnail
 from .preview import PreviewWindow, THUMBNAIL_SIZE
 from .prompt_edit import PromptEdit
+from .references import ReferenceEditor
 from .settings_dialog import SettingsDialog, max_pixels
 from .qt import (
     QCheckBox, QComboBox, QDoubleSpinBox, QFileDialog, QFormLayout, QFrame, QHBoxLayout,
@@ -122,6 +123,12 @@ class NovelAIDocker(DockWidget):
         self.characters = CharacterEditor(self._suggest_tags, self.import_image, self._state_changed)
         self.characters.set_custom_positions(settings.get_bool("character_positions"))
         layout.addWidget(self.characters)
+
+        # Precise references (V4.5). They cost Anlas, so the cost note follows
+        # them. They aren't part of a document's settings: they stay as they are
+        # when another document becomes active.
+        self.references = ReferenceEditor(self._update_mode, self._say, self._canvas_picture)
+        layout.addWidget(self.references)
 
         # Quality tags and Undesired Content preset, as on the NovelAI site:
         # added to the request, not shown in the boxes. Choices depend on the model.
@@ -397,6 +404,7 @@ class NovelAIDocker(DockWidget):
         model, showing the user's choices where the model has them."""
         model = self._model_name()
         self.characters.set_model(self._generating_model())
+        self.references.set_model(model)
         self.prompt.set_model(model)
         self.negative.set_model(model)
 
@@ -472,7 +480,7 @@ class NovelAIDocker(DockWidget):
                 self.characters.set_aspect(width, height)
             reasons = api.anlas_warnings(
                 width, height, self.steps.value(), self.n_samples.value(),
-                self._model_name(), self._account)
+                self._model_name(), self._account, self.references.used())
         self.cost_label.setText("Costs Anlas: " + "; ".join(reasons) if reasons else "")
         self.cost_label.setVisible(bool(reasons))
 
@@ -590,6 +598,14 @@ class NovelAIDocker(DockWidget):
             return
         canvas.write_annotation(self._doc, doc_state.ANNOTATION, doc_state.DESCRIPTION,
                                 doc_state.encode(self._panel_state()))
+
+    @staticmethod
+    def _canvas_picture():
+        """The visible canvas as an image, or None if no document is open."""
+        doc = canvas.active_document()
+        if doc is None:
+            return None
+        return canvas.read_image(doc, canvas.Region(0, 0, doc.width(), doc.height()))
 
     def _save_last_used(self):
         """Remember the settings (not the prompts) for documents without their own."""
@@ -784,6 +800,7 @@ class NovelAIDocker(DockWidget):
             uc_preset=self.uc_preset.currentText(),
             characters=people,
             use_coords=custom_positions,
+            references=self.references.for_request(),
             strength=strength,
         )
         # Inpainted results are shown pasted into a small copy of the canvas.

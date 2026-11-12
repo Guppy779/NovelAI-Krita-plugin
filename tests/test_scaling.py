@@ -110,6 +110,23 @@ def test_hidden_data_is_taken_out_of_the_alpha_channel():
     assert [cleaned[c::4] for c in range(3)] == [data[c::4] for c in range(3)]
 
 
+def test_hidden_data_is_found_from_the_first_columns_alone():
+    data = hidden(16, 16)
+    assert scaling.has_hidden_data(data, 16, 16)
+    # The marker is 120 bits: 8 columns of a picture 16 high.
+    assert scaling.MARKER_PIXELS == 120
+    strip = b"".join(data[row * 64:row * 64 + 8 * 4] for row in range(16))
+    assert scaling.has_hidden_data(strip, 8, 16)
+    assert not scaling.has_hidden_data(hidden(16, 16, b"something_else!"), 16, 16)
+    assert not scaling.has_hidden_data(hidden(4, 4, b"s"), 4, 4)  # Too small for the marker.
+
+
+def test_whole_alpha_changes_only_what_hiding_data_changes():
+    data = bytes([10, 20, 30, 254, 40, 50, 60, 1, 70, 80, 90, 255, 1, 2, 3, 0, 4, 5, 6, 128])
+    assert scaling.whole_alpha(data) == bytes(
+        [10, 20, 30, 255, 40, 50, 60, 0, 70, 80, 90, 255, 1, 2, 3, 0, 4, 5, 6, 128])
+
+
 def test_other_pictures_keep_their_alpha():
     data = hidden(16, 16, b"something_else!")
     assert scaling.without_hidden_data(data, 16, 16) == data

@@ -16,8 +16,8 @@ from .prompt_edit import PromptEdit
 from .references import ReferenceEditor
 from .settings_dialog import SettingsDialog, max_pixels
 from .qt import (
-    QCheckBox, QComboBox, QDoubleSpinBox, QFileDialog, QFormLayout, QFrame, QHBoxLayout,
-    QIcon, QImage, QLabel, QLineEdit, QListWidgetItem, QMenu, QMessageBox, QPixmap,
+    QApplication, QCheckBox, QComboBox, QDoubleSpinBox, QFileDialog, QFormLayout, QFrame,
+    QHBoxLayout, QIcon, QImage, QLabel, QLineEdit, QListWidgetItem, QMenu, QMessageBox, QPixmap,
     QProgressBar, QPushButton, QScrollArea, QSize, QSlider, QSpinBox, Qt, QTimer, QToolButton,
     QVBoxLayout, QWidget, ignore_wheel,
 )
@@ -808,8 +808,8 @@ class NovelAIDocker(DockWidget):
         # Inpainted results are shown pasted into a small copy of the canvas.
         composer = None
         if plan is not None or strength < 1.0:
-            source = canvas.careful_resize(canvas.read_image(doc, region), width, height, region)
-            params.image = canvas.to_base64_png(source)
+            params.image = canvas.to_base64_png(
+                self._picture_to_send(doc, region, width, height))
         if plan is not None:
             params.mask = canvas.to_base64_png(inpaint.request_mask(plan))
             if not settings.get_bool("inpaint_full_image"):
@@ -832,6 +832,18 @@ class NovelAIDocker(DockWidget):
                 on_images, self._on_error)
         else:
             self._job = self._client.generate(token, payload, on_images, self._on_error)
+
+    def _picture_to_send(self, doc, region, width, height):
+        if (region.width, region.height) == (width, height):
+            return canvas.picture_to_send(doc, region, width, height)
+        # Scaling as the site does takes a second or more for a large canvas.
+        self._say("Preparing the picture...")
+        self.status.repaint()
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        try:
+            return canvas.picture_to_send(doc, region, width, height)
+        finally:
+            QApplication.restoreOverrideCursor()
 
     def cancel(self):
         if self._job is not None:
@@ -876,6 +888,9 @@ class NovelAIDocker(DockWidget):
             image = QImage.fromData(data)
             if image.isNull():
                 continue
+            # The layer gets the picture alone. NovelAI's file, with the
+            # settings hidden in it, is kept for Save image.
+            image = canvas.without_hidden_data(image)
             result = Result(
                 image=canvas.compose_result(image, region, sharp=True),
                 x=region.x, y=region.y,

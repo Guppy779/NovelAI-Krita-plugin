@@ -137,14 +137,12 @@ def plan(mask, max_pixels):
     width, height = _size_for(mask, area, max_pixels)
     grid_w, grid_h = width // im.CELL, height // im.CELL
     if (grid_w, grid_h) != (cells.width(), cells.height()):
-        if mask.focus is not None:
-            # The site scales a focus area's mask itself: pick the same cells.
-            cells = _from_tight(im.nearest(_tight(cells), cells.width(), cells.height(),
-                                           grid_w, grid_h), grid_w, grid_h)
-        elif grid_w < cells.width() or grid_h < cells.height():
+        # The site's way: each new cell is the old one under its middle.
+        scaled = im.nearest(_tight(cells), cells.width(), cells.height(), grid_w, grid_h)
+        if any(scaled):
+            cells = _from_tight(scaled, grid_w, grid_h)
+        else:  # That missed all of a thin stroke: count every cell with paint in it.
             cells = _white_or_black(_scaled(cells, grid_w, grid_h, True))
-        else:
-            cells = _scaled(cells, grid_w, grid_h, False)
     return Plan(area, (width, height), cells)
 
 

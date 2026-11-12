@@ -127,8 +127,8 @@ you click **Generate**. **Clear mask** goes back to generating the whole image. 
 until you clear them, switch document or change the canvas size, and aren't saved in the `.kra`.
 
 - Without Focus, the whole canvas is sent at its own size, as on the NovelAI site. A canvas
-  above **Max generation size** is scaled down to fit, and the result is scaled back up, which
-  softens it. Use Focus to keep full detail.
+  above **Max generation size** is scaled down to fit, pixel for pixel as the site scales a
+  picture, and the result is scaled back up, which softens it. Use Focus to keep full detail.
 - The new layer holds the new area, fading out just past its edges, the way the site blends it.
   To get NovelAI's whole image as the layer instead, turn on **Settings → Inpainting: Add the
   whole image as the layer**.
@@ -282,7 +282,9 @@ To keep generating for free on Opus, keep **Settings → Max generation size** a
 Each result is kept in the history at the bottom of the preview window. Click one to see it
 large. The **Preview** button next to **Generate** reopens the window if you've closed it.
 
-- **Double-click** a result to add it as a layer.
+- **Double-click** a result to add it as a layer. The layer is the picture alone, without
+  the settings NovelAI hides in an image's transparency, so that image to image and
+  inpainting get exactly its colours, as on the site.
 - **Right-click** a result to:
   - save it to disk, as the original PNG NovelAI sent, with the prompt and settings embedded
   - reuse its seed or prompt

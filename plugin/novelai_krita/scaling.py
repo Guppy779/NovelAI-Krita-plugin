@@ -1,7 +1,8 @@
 """Scaling a picture exactly as the NovelAI site does.
 
 The site scales with the pica library's Lanczos3 filter (version 9.0.1): a
-reference picture, and the focus area of inpainting, there and back.
+reference picture, the picture for image to image and inpainting, and the
+result for a focus area on its way back.
 NovelAI draws a slightly different image from a reference that is a shade
 off here and there, so Krita's own Lanczos scaling isn't close enough. This
 is pica's arithmetic, number for number: its fixed point weights, its
@@ -27,6 +28,7 @@ from typing import Callable, List, Tuple
 
 MAX_CLEANED = 0x1000000  # Pixels. Larger pictures keep hidden data, as on the site.
 _MAGIC = b"stealth_pngcomp"
+MARKER_PIXELS = len(_MAGIC) * 8  # Hidden data starts with a marker, a bit in each pixel.
 _WITHOUT_HIDDEN = bytes(255 if value == 254 else 0 if value == 1 else value
                         for value in range(256))
 _NOT_CLEAR = bytes([0]) + bytes([255]) * 255
@@ -276,22 +278,36 @@ def resize(data: bytes, width: int, height: int, to_width: int, to_height: int) 
 
 # ---- The site's other steps with a reference ---------------------------------
 
+def has_hidden_data(data: bytes, width: int, height: int) -> bool:
+    """Whether a picture's alpha channel starts with the marker of NovelAI's
+    hidden data. The marker runs down the columns from the left, so the
+    picture's first columns, at its full height, are enough to tell."""
+    if width * height < MARKER_PIXELS:
+        return False
+    alpha = bytes(data[3::4])
+    for index, letter in enumerate(_MAGIC):
+        value = 0
+        for bit in range(index * 8, index * 8 + 8):
+            value = value << 1 | alpha[bit % height * width + bit // height] & 1
+        if value != letter:
+            return False
+    return True
+
+
+def whole_alpha(data: bytes) -> bytes:
+    """Alpha of 254 back at 255, and of 1 at 0: what hiding data in it changed."""
+    result = bytearray(data)
+    result[3::4] = bytes(data[3::4]).translate(_WITHOUT_HIDDEN)
+    return bytes(result)
+
+
 def without_hidden_data(data: bytes, width: int, height: int) -> bytes:
     """NovelAI hides an image's settings in the lowest bit of its alpha
     channel, which leaves alpha at 254 or 255. Such an image gets its alpha
     back at 255, so that it isn't taken for a partly clear one."""
-    if not len(_MAGIC) * 8 <= width * height <= MAX_CLEANED:
+    if width * height > MAX_CLEANED or not has_hidden_data(data, width, height):
         return bytes(data)
-    alpha = bytes(data[3::4])
-    for index, letter in enumerate(_MAGIC):
-        value = 0
-        for bit in range(index * 8, index * 8 + 8):  # Down the columns, from the left.
-            value = value << 1 | alpha[bit % height * width + bit // height] & 1
-        if value != letter:
-            return bytes(data)
-    result = bytearray(data)
-    result[3::4] = alpha.translate(_WITHOUT_HIDDEN)
-    return bytes(result)
+    return whole_alpha(data)
 
 
 def on_black(data: bytes) -> bytes:

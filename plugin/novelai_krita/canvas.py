@@ -20,8 +20,9 @@ class Region:
     height: int
     # Inpainting: how much of the result to keep (8-bit grayscale of any size).
     mask: Optional[QImage] = None
-    # A focus area of inpainting. The site scales those in the browser, so
-    # they're scaled pixel for pixel the same; the rest is left to Krita.
+    # A focus area of inpainting. The site scales its result back to the
+    # area, so that's done pixel for pixel the same. A result for the whole
+    # of a large canvas is scaled by Krita: the site has no such step.
     focused: bool = False
 
 
@@ -50,9 +51,46 @@ def selection_cells(doc):
         QImage(data, width, height, width, QImage.Format.Format_Grayscale8).copy())
 
 
+_RGBA = QImage.Format.Format_RGBA8888
+
+
+def without_hidden_data(image: QImage) -> QImage:
+    """``image`` without the settings NovelAI hides in its alpha channel.
+
+    They leave it a shade transparent here and there, and so a shade off once
+    it's on a canvas. The site takes them out before it works with an image.
+    """
+    source = image.convertToFormat(_RGBA)
+    width, height = source.width(), source.height()
+    data = image_bytes(source)
+    cleaned = scaling.without_hidden_data(data, width, height)
+    if cleaned == data:
+        return image
+    return QImage(cleaned, width, height, width * 4, _RGBA).copy()
+
+
+def _has_hidden_data(doc) -> bool:
+    """Whether the canvas is a NovelAI image that still has its hidden data
+    (one opened in Krita, say). The site's test, on the whole canvas."""
+    width, height = doc.width(), doc.height()
+    if width < 1 or height < 1 or width * height > scaling.MAX_CLEANED:
+        return False
+    columns = min(width, -(-scaling.MARKER_PIXELS // height))  # The ones the marker is in.
+    strip = doc.projection(0, 0, columns, height).convertToFormat(_RGBA)
+    return scaling.has_hidden_data(image_bytes(strip), columns, height)
+
+
 def read_image(doc, region: Region) -> QImage:
-    """The visible canvas inside ``region``, flattened onto white."""
+    """The visible canvas inside ``region``, flattened onto white.
+
+    A NovelAI image's hidden data is taken out first, as the site does: left
+    in, it would let a little white through.
+    """
     projection = doc.projection(region.x, region.y, region.width, region.height)
+    if _has_hidden_data(doc):
+        source = projection.convertToFormat(_RGBA)
+        projection = QImage(scaling.whole_alpha(image_bytes(source)), source.width(),
+                            source.height(), source.width() * 4, _RGBA).copy()
     flat = QImage(region.width, region.height, QImage.Format.Format_RGB32)
     flat.fill(QColor(255, 255, 255))
     painter = QPainter(flat)
@@ -82,17 +120,17 @@ def resize(image: QImage, width: int, height: int) -> QImage:
                         Qt.TransformationMode.SmoothTransformation)
 
 
-scaling_problem = ""  # Why the last sharp_resize had to fall back, if it did.
+scaling_problem = ""  # Why the last careful_resize had to fall back, if it did.
 
 
 def sharp_resize(image: QImage, width: int, height: int) -> QImage:
     """Scale with Lanczos3, using Krita's own scaler.
 
-    For a whole canvas that is too large to send as it is. The site sends
-    such a picture unscaled and leaves it to NovelAI, so there is nothing of
-    the site's to copy, and Krita is quick with large pictures. Qt's smooth
-    scaling is softer, and NovelAI generates blurry detail from a soft image.
-    Falls back to it if Krita can't do the scaling.
+    For a result that goes back onto a canvas larger than it was generated
+    at. The site leaves its results at the size they were generated at, so
+    there is nothing of the site's to copy, and Krita is quick with large
+    pictures. Qt's smooth scaling is softer. Falls back to it if Krita can't
+    do the scaling.
     """
     global scaling_problem
     scaling_problem = ""
@@ -126,13 +164,22 @@ def exact_resize(image: QImage, width: int, height: int) -> QImage:
     """Scale pixel for pixel as the NovelAI site does in the browser (see scaling.py)."""
     if image.width() == width and image.height() == height:
         return image
-    source = image.convertToFormat(QImage.Format.Format_RGBA8888)
+    source = image.convertToFormat(_RGBA)
     data = scaling.resize(image_bytes(source), source.width(), source.height(), width, height)
-    return QImage(data, width, height, width * 4, QImage.Format.Format_RGBA8888).copy()
+    return QImage(data, width, height, width * 4, _RGBA).copy()
+
+
+def picture_to_send(doc, region: Region, width: int, height: int) -> QImage:
+    """The canvas inside ``region`` as the site sends a picture for image to
+    image and inpainting: scaled to the generation's size with the site's own
+    arithmetic, and with an alpha channel."""
+    return exact_resize(read_image(doc, region), width, height).convertToFormat(_RGBA)
 
 
 def careful_resize(image: QImage, width: int, height: int, region: Region) -> QImage:
-    """The scaling for what is sent of ``region``, and for its finished results."""
+    """The scaling for a finished result of ``region``."""
+    global scaling_problem
+    scaling_problem = ""  # Also when Krita's scaler, which sets it, isn't used.
     scale = exact_resize if region.focused else sharp_resize
     return scale(image, width, height)
 

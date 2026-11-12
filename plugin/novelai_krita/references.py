@@ -18,9 +18,8 @@ from .import_dialog import MAX_FILE_SIZE
 from .prompt_edit import IMAGE_EXTENSIONS
 from .qt import (
     QApplication, QCheckBox, QColor, QComboBox, QDoubleSpinBox, QEventLoop, QFileDialog, QFrame,
-    QHBoxLayout, QImage,
-    QImageReader, QLabel, QMenu, QPainter, QPixmap, QSlider, Qt, QTimer, QToolButton, QVBoxLayout, QWidget,
-    ignore_wheel, image_bytes,
+    QHBoxLayout, QImage, QImageReader, QLabel, QMenu, QPainter, QPixmap, QSlider, Qt, QTimer,
+    QToolButton, QVBoxLayout, QWidget, ignore_wheel, image_bytes,
 )
 
 THUMBNAIL_SIZE = 84

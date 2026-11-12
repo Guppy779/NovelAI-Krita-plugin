@@ -126,6 +126,31 @@ def test_character_outside_the_focus_area_stays_at_its_edge():
     assert im.focus_position(0.0, 1.0, 800, 1200, (200, 400, 400, 400)) == (0.0, 1.0)
 
 
+def test_nearest_takes_the_cell_under_the_middle_of_each_new_one():
+    # 3 cells to 5: the middles are at 0.3, 0.9, 1.5, 2.1 and 2.7 of the old ones.
+    assert im.nearest(bytes([1, 2, 3]), 3, 1, 5, 1) == bytes([1, 1, 2, 3, 3])
+    # 5 cells to 3: the middles are at 0.83, 2.5 and 4.17.
+    assert im.nearest(bytes([1, 2, 3, 4, 5]), 5, 1, 3, 1) == bytes([1, 3, 5])
+
+
+def test_nearest_scales_rows_and_columns_on_their_own():
+    cells = bytes([1, 2,
+                   3, 4])
+    # 2 rows to 3: the middles are at 0.33, 1.0 and 1.67 of the old ones.
+    assert im.nearest(cells, 2, 2, 4, 3) == bytes([1, 1, 2, 2,
+                                                   3, 3, 4, 4,
+                                                   3, 3, 4, 4])
+
+
+def test_nearest_at_the_same_size_changes_nothing():
+    cells = grid(7, 5, (0, 0), (3, 2), (6, 4))
+    assert im.nearest(cells, 7, 5, 7, 5) == cells
+
+
+def test_nearest_doubled_makes_each_cell_four():
+    assert im.nearest(bytes([0, 255]), 2, 1, 4, 2) == bytes([0, 0, 255, 255] * 2)
+
+
 def test_blend_keeps_the_masked_cells_whole():
     width, height = 40, 40
     alpha = im.blend_alpha(grid(width, height, *[(x, y) for x in range(15, 25) for y in range(15, 25)]),

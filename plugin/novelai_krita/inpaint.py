@@ -137,7 +137,11 @@ def plan(mask, max_pixels):
     width, height = _size_for(mask, area, max_pixels)
     grid_w, grid_h = width // im.CELL, height // im.CELL
     if (grid_w, grid_h) != (cells.width(), cells.height()):
-        if grid_w < cells.width() or grid_h < cells.height():
+        if mask.focus is not None:
+            # The site scales a focus area's mask itself: pick the same cells.
+            cells = _from_tight(im.nearest(_tight(cells), cells.width(), cells.height(),
+                                           grid_w, grid_h), grid_w, grid_h)
+        elif grid_w < cells.width() or grid_h < cells.height():
             cells = _white_or_black(_scaled(cells, grid_w, grid_h, True))
         else:
             cells = _scaled(cells, grid_w, grid_h, False)

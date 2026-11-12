@@ -108,6 +108,18 @@ def focus_position(x, y, canvas_w, canvas_h, area):
             min(1.0, max(0.0, (y * canvas_h - top) / float(height))))
 
 
+def nearest(cells, width, height, to_width, to_height):
+    """A grid of cells at another size, as the site makes it: each new cell
+    is the old one under its middle. One byte for each cell, rows from the top."""
+    columns = [min(width - 1, int((x + .5) * width / to_width)) for x in range(to_width)]
+    out = bytearray()
+    for y in range(to_height):
+        start = min(height - 1, int((y + .5) * height / to_height)) * width
+        row = cells[start:start + width]
+        out += bytes(row[column] for column in columns)
+    return bytes(out)
+
+
 def _spread_line(line, radius):
     out = bytearray(len(line))
     for index, value in enumerate(line):

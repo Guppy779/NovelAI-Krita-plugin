@@ -118,6 +118,8 @@ Scroll to zoom, and drag with the middle or right mouse button to move around.
   or leave it empty to regenerate all of it. **Minimum context** is the red border inside the
   rectangle: NovelAI sees it, but only the part inside it changes. Drag the rectangle to move it;
   the red border can hang off the edge of the canvas, so you can inpaint right up to the edge.
+  The area is enlarged, and the result made smaller again, pixel for pixel as the NovelAI site
+  does it.
 
 Click **Use mask**. The button changes to **Edit mask...**, a small picture of the mask appears
 next to it (click it to edit the mask too), and every **Generate** now inpaints that area, so you can keep trying with a different seed. It works with what's on the canvas when
@@ -363,7 +365,7 @@ plugin/
     tags.py                 Finding the tag at the cursor (plain Python, tested)
     weights.py              Where a prompt is weighted, for colouring it (plain Python, tested)
     presets.py              Quality tags and Undesired Content presets (plain Python, tested)
-    scaling.py              Scaling a reference exactly as the site does (plain Python, tested)
+    scaling.py              Scaling a picture exactly as the site does (plain Python, tested)
     settings.py             Settings stored in kritarc
     settings_dialog.py      The Settings dialog
     Manual.html             Help shown in Krita's Python Plugin Manager

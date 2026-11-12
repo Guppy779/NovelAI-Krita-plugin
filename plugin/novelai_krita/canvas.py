@@ -6,7 +6,7 @@ from typing import Optional
 
 from krita import Krita
 
-from . import inpaint
+from . import inpaint, scaling
 from .qt import QBuffer, QByteArray, QColor, QIODevice, QImage, QPainter, Qt, image_bytes
 
 
@@ -20,6 +20,9 @@ class Region:
     height: int
     # Inpainting: how much of the result to keep (8-bit grayscale of any size).
     mask: Optional[QImage] = None
+    # A focus area of inpainting. The site scales those in the browser, so
+    # they're scaled pixel for pixel the same; the rest is left to Krita.
+    focused: bool = False
 
 
 def active_document():
@@ -83,10 +86,13 @@ scaling_problem = ""  # Why the last sharp_resize had to fall back, if it did.
 
 
 def sharp_resize(image: QImage, width: int, height: int) -> QImage:
-    """Scale with Lanczos3, as the NovelAI site does, using Krita's own scaler.
+    """Scale with Lanczos3, using Krita's own scaler.
 
-    Qt's smooth scaling is softer, and NovelAI generates blurry detail from a
-    soft image. Falls back to it if Krita can't do the scaling.
+    For a whole canvas that is too large to send as it is. The site sends
+    such a picture unscaled and leaves it to NovelAI, so there is nothing of
+    the site's to copy, and Krita is quick with large pictures. Qt's smooth
+    scaling is softer, and NovelAI generates blurry detail from a soft image.
+    Falls back to it if Krita can't do the scaling.
     """
     global scaling_problem
     scaling_problem = ""
@@ -116,6 +122,21 @@ def sharp_resize(image: QImage, width: int, height: int) -> QImage:
     return QImage(data, width, height, width * 4, QImage.Format.Format_ARGB32).copy()
 
 
+def exact_resize(image: QImage, width: int, height: int) -> QImage:
+    """Scale pixel for pixel as the NovelAI site does in the browser (see scaling.py)."""
+    if image.width() == width and image.height() == height:
+        return image
+    source = image.convertToFormat(QImage.Format.Format_RGBA8888)
+    data = scaling.resize(image_bytes(source), source.width(), source.height(), width, height)
+    return QImage(data, width, height, width * 4, QImage.Format.Format_RGBA8888).copy()
+
+
+def careful_resize(image: QImage, width: int, height: int, region: Region) -> QImage:
+    """The scaling for what is sent of ``region``, and for its finished results."""
+    scale = exact_resize if region.focused else sharp_resize
+    return scale(image, width, height)
+
+
 def to_base64_png(image: QImage) -> str:
     buffer = QBuffer()
     buffer.open(QIODevice.OpenModeFlag.WriteOnly)
@@ -137,8 +158,10 @@ def compose_result(result: QImage, region: Region, sharp: bool = False) -> QImag
     With ``region.mask`` (inpainting) it fades out around the masked area.
     ``sharp``: use the slower scaling meant for finished results.
     """
-    scale = sharp_resize if sharp else resize
-    image = scale(result, region.width, region.height)
+    if sharp:
+        image = careful_resize(result, region.width, region.height, region)
+    else:
+        image = resize(result, region.width, region.height)
     image = image.convertToFormat(QImage.Format.Format_ARGB32_Premultiplied)
     if region.mask is not None:
         _apply_alpha(image, resize(region.mask, region.width, region.height)

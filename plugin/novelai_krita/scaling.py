@@ -1,6 +1,7 @@
 """Scaling a picture exactly as the NovelAI site does.
 
-The site scales with the pica library's Lanczos3 filter (version 9.0.1).
+The site scales with the pica library's Lanczos3 filter (version 9.0.1): a
+reference picture, and the focus area of inpainting, there and back.
 NovelAI draws a slightly different image from a reference that is a shade
 off here and there, so Krita's own Lanczos scaling isn't close enough. This
 is pica's arithmetic, number for number: its fixed point weights, its

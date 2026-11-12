@@ -775,7 +775,7 @@ class NovelAIDocker(DockWidget):
             self._say("The inpainting mask is empty. Click Edit mask to paint one.")
             return
         if plan is not None:
-            region = canvas.Region(*plan.area)
+            region = canvas.Region(*plan.area, focused=mask.focus is not None)
             width, height = plan.size
         else:
             region = canvas.Region(0, 0, canvas_width, canvas_height)
@@ -808,7 +808,7 @@ class NovelAIDocker(DockWidget):
         # Inpainted results are shown pasted into a small copy of the canvas.
         composer = None
         if plan is not None or strength < 1.0:
-            source = canvas.sharp_resize(canvas.read_image(doc, region), width, height)
+            source = canvas.careful_resize(canvas.read_image(doc, region), width, height, region)
             params.image = canvas.to_base64_png(source)
         if plan is not None:
             params.mask = canvas.to_base64_png(inpaint.request_mask(plan))

@@ -217,7 +217,9 @@ Things to know:
 - **It always costs Anlas:** 5 per reference for each image, on top of the normal price, on
   Opus too. The **Costs Anlas** note shows the amount.
 - **Size:** NovelAI takes references at 1024 × 1536, 1536 × 1024 or 1472 × 1472. Your picture is
-  scaled to fit the nearest of those, with black around it where it doesn't fill it.
+  scaled to fit the nearest of those, with black around it where it doesn't fill it. The
+  scaling is pixel for pixel the NovelAI site's, so the same picture and seed give the same
+  image as on the site.
 - **Several references:** you can add up to 16 and mix types, such as one character and one
   style. Several character references blend into one character.
 - **Inpainting:** references are used when you inpaint as well.
@@ -361,6 +363,7 @@ plugin/
     tags.py                 Finding the tag at the cursor (plain Python, tested)
     weights.py              Where a prompt is weighted, for colouring it (plain Python, tested)
     presets.py              Quality tags and Undesired Content presets (plain Python, tested)
+    scaling.py              Scaling a reference exactly as the site does (plain Python, tested)
     settings.py             Settings stored in kritarc
     settings_dialog.py      The Settings dialog
     Manual.html             Help shown in Krita's Python Plugin Manager

@@ -7,18 +7,19 @@ Each open document has its own references. They aren't stored anywhere, so
 that documents stay small: they last until they're removed, or the document
 or Krita is closed. Each picture is kept as PNG bytes, flattened onto black
 and already at the size it's sent at, but without the padding that goes
-around it.
+around it. It's scaled with the site's own arithmetic (see scaling.py):
+NovelAI draws a visibly different image from a reference that is a shade off.
 """
 
 import os
 
-from . import api, canvas, settings
+from . import api, canvas, scaling, settings
 from .import_dialog import MAX_FILE_SIZE
 from .prompt_edit import IMAGE_EXTENSIONS
 from .qt import (
     QCheckBox, QColor, QComboBox, QDoubleSpinBox, QFileDialog, QFrame, QHBoxLayout, QImage,
     QLabel, QMenu, QPainter, QPixmap, QSlider, Qt, QTimer, QToolButton, QVBoxLayout, QWidget,
-    ignore_wheel,
+    ignore_wheel, image_bytes,
 )
 
 THUMBNAIL_SIZE = 84
@@ -26,6 +27,7 @@ STEP = 0.05  # Of the sliders, as on the site.
 # The site's sliders run from 0 to 1, but take typed numbers beyond that.
 AMOUNT_MIN, AMOUNT_MAX = -1.0, 2.0
 _RGB = QImage.Format.Format_RGB32
+_RGBA = QImage.Format.Format_RGBA8888
 
 ADD_TIP = ("Add a picture for NovelAI to take a character, a style or both from.\n"
            "You can also drop an image file here. V4.5 Full and V4.5 Curated only.\n"
@@ -51,13 +53,14 @@ def _on_black(width, height):
 
 
 def prepare(image):
-    """``image`` as a reference keeps it: on black, at the size it's sent at."""
-    _, (width, height), _ = api.reference_layout(image.width(), image.height())
-    flat = _on_black(image.width(), image.height())
-    painter = QPainter(flat)
-    painter.drawImage(0, 0, image)
-    painter.end()
-    return canvas.sharp_resize(flat, width, height).convertToFormat(_RGB)
+    """``image`` as a reference keeps it: on black, at the size it's sent at.
+    Pixel for pixel what the NovelAI site makes of the same picture."""
+    source = image.convertToFormat(_RGBA)
+    width, height = source.width(), source.height()
+    _, (to_width, to_height), _ = api.reference_layout(width, height)
+    data = scaling.without_hidden_data(image_bytes(source), width, height)
+    data = scaling.on_black(scaling.resize(data, width, height, to_width, to_height))
+    return QImage(data, to_width, to_height, to_width * 4, _RGBA).convertToFormat(_RGB)
 
 
 def padded(picture):
@@ -67,7 +70,7 @@ def padded(picture):
     painter = QPainter(whole)
     painter.drawImage(left, top, canvas.resize(picture, *fitted))
     painter.end()
-    return whole
+    return whole.convertToFormat(_RGBA)  # The site's PNG has an alpha channel too.
 
 
 class _Amount(QWidget):

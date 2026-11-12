@@ -10,7 +10,7 @@ try:
         QTimer, QUrl, Qt,
     )
     from PyQt5.QtGui import (  # noqa: F401
-        QColor, QFont, QIcon, QImage, QPainter, QPen, QPixmap, QStandardItem,
+        QColor, QFont, QIcon, QImage, QImageReader, QPainter, QPen, QPixmap, QStandardItem,
         QStandardItemModel, QSyntaxHighlighter, QTextCharFormat, QTextCursor,
     )
     from PyQt5.QtNetwork import (  # noqa: F401
@@ -31,7 +31,7 @@ except ImportError:
         QTimer, QUrl, Qt,
     )
     from PyQt6.QtGui import (  # noqa: F401
-        QColor, QFont, QIcon, QImage, QPainter, QPen, QPixmap, QStandardItem,
+        QColor, QFont, QIcon, QImage, QImageReader, QPainter, QPen, QPixmap, QStandardItem,
         QStandardItemModel, QSyntaxHighlighter, QTextCharFormat, QTextCursor,
     )
     from PyQt6.QtNetwork import (  # noqa: F401

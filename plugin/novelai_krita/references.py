@@ -18,7 +18,7 @@ from .import_dialog import MAX_FILE_SIZE
 from .prompt_edit import IMAGE_EXTENSIONS
 from .qt import (
     QCheckBox, QColor, QComboBox, QDoubleSpinBox, QFileDialog, QFrame, QHBoxLayout, QImage,
-    QLabel, QMenu, QPainter, QPixmap, QSlider, Qt, QTimer, QToolButton, QVBoxLayout, QWidget,
+    QImageReader, QLabel, QMenu, QPainter, QPixmap, QSlider, Qt, QTimer, QToolButton, QVBoxLayout, QWidget,
     ignore_wheel, image_bytes,
 )
 
@@ -50,6 +50,15 @@ def _on_black(width, height):
     image = QImage(width, height, _RGB)
     image.fill(QColor(0, 0, 0))
     return image
+
+
+def read_picture(path):
+    """The image in a file (null if it can't be read). A JPEG is turned the way
+    its EXIF data says, as the site and image viewers show it; Qt leaves it
+    as stored unless asked."""
+    reader = QImageReader(path)
+    reader.setAutoTransform(bytes(reader.format()).lower() in (b"jpeg", b"jpg"))
+    return reader.read()
 
 
 def prepare(image):
@@ -304,7 +313,7 @@ class ReferenceEditor(QWidget):
         except OSError as exc:
             self._say("Could not read %s: %s." % (name, exc.strerror or exc))
             return
-        if too_large or not self.add_image(QImage(path)):
+        if too_large or not self.add_image(read_picture(path)):
             if len(self._cards) < api.MAX_REFERENCES:
                 self._say("Could not read %s as an image." % name)
             return

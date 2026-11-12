@@ -465,7 +465,6 @@ def test_reference_layout_rejects_empty():
 def reference_params(**changes):
     values = dict(prompt="1girl", model="nai-diffusion-4-5-full", references=[
         api.Reference("QUJD", "character", 0.8, 0.95),
-        api.Reference("REVG", "style", 1.0, 1.0, enabled=False),
         api.Reference("R0hJ"),
     ])
     values.update(changes)
@@ -494,7 +493,7 @@ def test_references_are_left_out_for_other_models(model):
 def test_no_references_sends_nothing_about_them():
     parameters = reference_params(references=[])
     assert not any("director_reference" in key for key in parameters)
-    parameters = reference_params(references=[api.Reference("QUJD", enabled=False)])
+    parameters = reference_params(references=[api.Reference("")])  # No picture.
     assert not any("director_reference" in key for key in parameters)
 
 

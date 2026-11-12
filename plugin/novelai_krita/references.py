@@ -390,9 +390,6 @@ class ReferenceEditor(QWidget):
 
     # ---- What gets sent --------------------------------------------------------
 
-    def count(self):
-        return len(self._cards)
-
     def used(self):
         """How many references the current model will be sent."""
         if not api.supports_references(self._model):

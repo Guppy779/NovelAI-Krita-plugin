@@ -254,7 +254,6 @@ class Reference:
     kind: str = DEFAULT_REFERENCE_TYPE
     strength: float = 1.0
     fidelity: float = 1.0
-    enabled: bool = True
 
 
 @dataclass
@@ -277,7 +276,7 @@ class GenerationParams:
     # ``use_coords``: place them at their positions, not where the AI chooses.
     characters: List[CharacterPrompt] = field(default_factory=list)
     use_coords: bool = False
-    # Precise references (V4.5). Disabled ones aren't sent.
+    # Precise references (V4.5): the ones to send.
     references: List[Reference] = field(default_factory=list)
     # Image to image / inpainting. ``image`` and ``mask`` are base64 PNGs of
     # exactly width x height pixels; white in the mask means "regenerate".
@@ -370,7 +369,7 @@ def build_payload(p: GenerationParams) -> dict:
 
     # The selected model decides, as on the site: V5 Curated inpaints with
     # V4.5 Curated's model, but takes no references.
-    references = [r for r in p.references if r.enabled and r.image]
+    references = [r for r in p.references if r.image]
     if references and supports_references(p.model):
         params.update({
             "director_reference_images": [r.image for r in references],

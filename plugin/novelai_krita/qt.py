@@ -6,7 +6,8 @@ which work with both bindings.
 
 try:
     from PyQt5.QtCore import (  # noqa: F401
-        QBuffer, QByteArray, QEvent, QIODevice, QModelIndex, QObject, QPointF, QRectF, QSize,
+        QBuffer, QByteArray, QEvent, QEventLoop, QIODevice, QModelIndex, QObject, QPointF,
+        QRectF, QSize,
         QTimer, QUrl, Qt,
     )
     from PyQt5.QtGui import (  # noqa: F401
@@ -17,7 +18,8 @@ try:
         QNetworkAccessManager, QNetworkReply, QNetworkRequest,
     )
     from PyQt5.QtWidgets import (  # noqa: F401
-        QAbstractItemView, QAbstractSpinBox, QButtonGroup, QCheckBox, QComboBox, QCompleter,
+        QAbstractItemView, QAbstractSpinBox, QApplication, QButtonGroup, QCheckBox, QComboBox,
+        QCompleter,
         QDialog,
         QDialogButtonBox,
         QDoubleSpinBox, QFileDialog, QFormLayout, QFrame, QHBoxLayout,
@@ -27,7 +29,8 @@ try:
     )
 except ImportError:
     from PyQt6.QtCore import (  # noqa: F401
-        QBuffer, QByteArray, QEvent, QIODevice, QModelIndex, QObject, QPointF, QRectF, QSize,
+        QBuffer, QByteArray, QEvent, QEventLoop, QIODevice, QModelIndex, QObject, QPointF,
+        QRectF, QSize,
         QTimer, QUrl, Qt,
     )
     from PyQt6.QtGui import (  # noqa: F401
@@ -38,7 +41,8 @@ except ImportError:
         QNetworkAccessManager, QNetworkReply, QNetworkRequest,
     )
     from PyQt6.QtWidgets import (  # noqa: F401
-        QAbstractItemView, QAbstractSpinBox, QButtonGroup, QCheckBox, QComboBox, QCompleter,
+        QAbstractItemView, QAbstractSpinBox, QApplication, QButtonGroup, QCheckBox, QComboBox,
+        QCompleter,
         QDialog,
         QDialogButtonBox,
         QDoubleSpinBox, QFileDialog, QFormLayout, QFrame, QHBoxLayout,

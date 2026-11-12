@@ -17,7 +17,8 @@ from . import api, canvas, scaling, settings
 from .import_dialog import MAX_FILE_SIZE
 from .prompt_edit import IMAGE_EXTENSIONS
 from .qt import (
-    QCheckBox, QColor, QComboBox, QDoubleSpinBox, QFileDialog, QFrame, QHBoxLayout, QImage,
+    QApplication, QCheckBox, QColor, QComboBox, QDoubleSpinBox, QEventLoop, QFileDialog, QFrame,
+    QHBoxLayout, QImage,
     QImageReader, QLabel, QMenu, QPainter, QPixmap, QSlider, Qt, QTimer, QToolButton, QVBoxLayout, QWidget,
     ignore_wheel, image_bytes,
 )
@@ -299,7 +300,16 @@ class ReferenceEditor(QWidget):
             return False
         if image.isNull() or image.width() < 1 or image.height() < 1:
             return False
-        card = ReferenceCard(self, *prepare(image))
+        # Scaling as the site does takes about half a second, and several for a
+        # large picture or one with transparency. Say so before it starts; what
+        # is clicked meanwhile waits until it's done.
+        self._say("Preparing the reference...")
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        try:
+            QApplication.processEvents(QEventLoop.ProcessEventsFlag.ExcludeUserInputEvents)
+            card = ReferenceCard(self, *prepare(image))
+        finally:
+            QApplication.restoreOverrideCursor()
         self._cards.append(card)
         self._list.addWidget(card)
         self._refresh()

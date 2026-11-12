@@ -5,10 +5,10 @@ from, with the site's Strength and Fidelity sliders.
 
 Each open document has its own references. They aren't stored anywhere, so
 that documents stay small: they last until they're removed, or the document
-or Krita is closed. Each picture is kept as PNG bytes, flattened onto black
-and already at the size it's sent at, but without the padding that goes
-around it. It's scaled with the site's own arithmetic (see scaling.py):
-NovelAI draws a visibly different image from a reference that is a shade off.
+or Krita is closed. Each picture is kept as the PNG that is sent: on black,
+at one of NovelAI's sizes. It's scaled with the site's own arithmetic (see
+scaling.py): NovelAI draws a visibly different image from a reference that
+is a shade off.
 """
 
 import os
@@ -46,12 +46,6 @@ FIDELITY_TIP = ("How exactly the reference is applied. At 1 it is hard to change
 NUMBER_TIP = "\nType a number to go beyond the slider, below 0 included."
 
 
-def _on_black(width, height):
-    image = QImage(width, height, _RGB)
-    image.fill(QColor(0, 0, 0))
-    return image
-
-
 def read_picture(path):
     """The image in a file (null if it can't be read). A JPEG is turned the way
     its EXIF data says, as the site and image viewers show it; Qt leaves it
@@ -62,24 +56,25 @@ def read_picture(path):
 
 
 def prepare(image):
-    """``image`` as a reference keeps it: on black, at the size it's sent at.
-    Pixel for pixel what the NovelAI site makes of the same picture."""
+    """``image`` as a reference: (the PNG that is sent, as base64; its size;
+    the picture in it, to show).
+
+    Pixel for pixel what the NovelAI site makes of the same picture: scaled
+    to fit one of NovelAI's sizes, centred, with black around and behind it.
+    """
     source = image.convertToFormat(_RGBA)
     width, height = source.width(), source.height()
-    _, (to_width, to_height), _ = api.reference_layout(width, height)
+    size, (to_width, to_height), (left, top) = api.reference_layout(width, height)
     data = scaling.without_hidden_data(image_bytes(source), width, height)
     data = scaling.on_black(scaling.resize(data, width, height, to_width, to_height))
-    return QImage(data, to_width, to_height, to_width * 4, _RGBA).convertToFormat(_RGB)
-
-
-def padded(picture):
-    """A kept picture as it's sent: centred on black, at one of NovelAI's sizes."""
-    (width, height), fitted, (left, top) = api.reference_layout(picture.width(), picture.height())
-    whole = _on_black(width, height)
+    picture = QImage(data, to_width, to_height, to_width * 4, _RGBA).convertToFormat(_RGB)
+    whole = QImage(size[0], size[1], _RGB)
+    whole.fill(QColor(0, 0, 0))
     painter = QPainter(whole)
-    painter.drawImage(left, top, canvas.resize(picture, *fitted))
+    painter.drawImage(left, top, picture)
     painter.end()
-    return whole.convertToFormat(_RGBA)  # The site's PNG has an alpha channel too.
+    # The site's PNG has an alpha channel too.
+    return canvas.to_base64_png(whole.convertToFormat(_RGBA)), size, picture
 
 
 class _Amount(QWidget):
@@ -126,11 +121,10 @@ class _Amount(QWidget):
 class ReferenceCard(QFrame):
     """One reference: its picture, on/off, type, strength and fidelity."""
 
-    def __init__(self, editor, png, picture):
+    def __init__(self, editor, sent, size, picture):
         super().__init__()
         self.setFrameShape(QFrame.Shape.StyledPanel)
-        self.png = png
-        self._request = None  # The picture as it's sent (base64), once it has been.
+        self._sent = sent  # The PNG that is sent, as base64.
         changed = editor.changed
 
         thumbnail = QLabel()
@@ -139,9 +133,8 @@ class ReferenceCard(QFrame):
         thumbnail.setPixmap(QPixmap.fromImage(picture.scaled(
             THUMBNAIL_SIZE, THUMBNAIL_SIZE, Qt.AspectRatioMode.KeepAspectRatio,
             Qt.TransformationMode.SmoothTransformation)))
-        sent = api.reference_layout(picture.width(), picture.height())[0]
         thumbnail.setToolTip("Sent at %d x %d, with black around it where it doesn't fill that."
-                             % sent)
+                             % size)
 
         self.enabled = QCheckBox()
         self.enabled.setChecked(True)
@@ -190,9 +183,7 @@ class ReferenceCard(QFrame):
 
     def request(self):
         """This reference as it goes in a request."""
-        if self._request is None:
-            self._request = canvas.to_base64_png(padded(QImage.fromData(self.png)))
-        return api.Reference(self._request, self.kind.currentData(), self.strength.value(),
+        return api.Reference(self._sent, self.kind.currentData(), self.strength.value(),
                              self.fidelity.value())
 
 
@@ -308,8 +299,7 @@ class ReferenceEditor(QWidget):
             return False
         if image.isNull() or image.width() < 1 or image.height() < 1:
             return False
-        picture = prepare(image)
-        card = ReferenceCard(self, canvas.to_png(picture), picture)
+        card = ReferenceCard(self, *prepare(image))
         self._cards.append(card)
         self._list.addWidget(card)
         self._refresh()

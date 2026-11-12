@@ -125,8 +125,8 @@ class NovelAIDocker(DockWidget):
         layout.addWidget(self.characters)
 
         # Precise references (V4.5). They cost Anlas, so the cost note follows
-        # them. They aren't part of a document's settings: they stay as they are
-        # when another document becomes active.
+        # them. Each document has its own, but they aren't part of its stored
+        # settings: the editor keeps them, and only while the document is open.
         self.references = ReferenceEditor(self._update_mode, self._say, self._canvas_picture)
         layout.addWidget(self.references)
 
@@ -573,6 +573,7 @@ class NovelAIDocker(DockWidget):
             return
         self._doc = doc
         self._set_mask(None)  # A mask belongs to the document it was painted on.
+        self.references.set_document(doc)
         if doc is None:
             return  # Keep showing the last document's settings.
         stored = doc_state.decode(canvas.read_annotation(doc, doc_state.ANNOTATION))

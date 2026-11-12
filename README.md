@@ -88,8 +88,8 @@ the panel to that document's settings.
   generation and empty prompts.
 - Changing only the prompt doesn't mark the document as modified, so save it yourself if
   you want to keep a prompt you haven't generated with yet.
-- Precise references aren't part of this: they stay in the panel for every document, and
-  aren't saved in the `.kra`.
+- Precise references aren't saved in the `.kra`. Each open document has its own, but only
+  until you close it.
 
 ### What Generate does
 
@@ -221,9 +221,11 @@ Things to know:
 - **Several references:** you can add up to 16 and mix types, such as one character and one
   style. Several character references blend into one character.
 - **Inpainting:** references are used when you inpaint as well.
-- **Not saved:** references stay in the panel, whichever document is open, until you remove
-  them or close Krita. They aren't stored in the `.kra`, which keeps your files small, so
-  add them again after restarting Krita.
+- **One set for each document:** every open document has its own references, and switching
+  to another document switches the panel to that document's references.
+- **Not saved:** references last until you remove them, or close the document or Krita.
+  They aren't stored in the `.kra`, which keeps your files small, so add them again after
+  reopening a document.
 
 NovelAI's [Precise Reference guide](https://docs.novelai.net/en/image/precisereference) has
 tips on what makes a good reference picture.

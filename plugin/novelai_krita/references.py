@@ -3,10 +3,11 @@
 A reference is a picture for NovelAI to take a character, a style or both
 from, with the site's Strength and Fidelity sliders.
 
-References aren't stored anywhere, so that documents stay small: they stay
-in the panel, whichever document is open, until they're removed or Krita is
-closed. Each picture is kept as PNG bytes, flattened onto black and already
-at the size it's sent at, but without the padding that goes around it.
+Each open document has its own references. They aren't stored anywhere, so
+that documents stay small: they last until they're removed, or the document
+or Krita is closed. Each picture is kept as PNG bytes, flattened onto black
+and already at the size it's sent at, but without the padding that goes
+around it.
 """
 
 import os
@@ -29,7 +30,8 @@ _RGB = QImage.Format.Format_RGB32
 ADD_TIP = ("Add a picture for NovelAI to take a character, a style or both from.\n"
            "You can also drop an image file here. V4.5 Full and V4.5 Curated only.\n"
            "Each reference costs %d Anlas per image, on every plan.\n"
-           "References stay here until you remove them or close Krita."
+           "Each open document has its own references. They aren't saved: they\n"
+           "last until you remove them, or close the document or Krita."
            % api.REFERENCE_ANLAS)
 TYPE_TIP = ("What NovelAI takes from the picture:\n"
             "Character & Style: the character's looks and the art style.\n"
@@ -185,7 +187,11 @@ class ReferenceEditor(QWidget):
     def __init__(self, on_changed, say, canvas_picture, parent=None):
         super().__init__(parent)
         self._on_changed, self._say, self._canvas_picture = on_changed, say, canvas_picture
-        self._cards = []
+        self._cards = []  # The ones shown.
+        self._doc = None  # The document they belong to.
+        self._others = []  # (document, cards) for the other open documents.
+        self._active = False  # Whether a document is open.
+        self._loose = False  # Whether they changed while none was open.
         self._model = ""
         self.setAcceptDrops(True)
 
@@ -219,7 +225,57 @@ class ReferenceEditor(QWidget):
         self._refresh()
 
     def changed(self, *_):
+        if not self._active:
+            self._loose = True
         self._on_changed()
+
+    # ---- One list for each open document ---------------------------------------
+
+    def set_document(self, doc):
+        """Show the references of ``doc``, the document that became active.
+        With None, for no document, the list stays as it is."""
+        self._active = doc is not None
+        if doc is None:
+            return
+        if canvas.same_document(doc, self._doc):
+            self._loose = False
+            return
+        mine = []
+        for other, cards in self._others:
+            if canvas.same_document(other, doc):
+                mine = cards
+            elif not canvas.document_is_open(other):
+                self._discard(cards)
+        self._others = [(other, cards) for other, cards in self._others
+                        if cards is not mine and canvas.document_is_open(other)]
+        if self._doc is not None and canvas.document_is_open(self._doc):
+            self._others.append((self._doc, self._take()))
+        elif mine or not self._loose:
+            self._discard(self._take())
+        # Otherwise the document takes what was added while none was open, as
+        # it does with a prompt typed then.
+        self._doc = doc
+        self._loose = False
+        if mine:
+            self._cards = mine
+            for card in mine:
+                self._list.addWidget(card)
+                card.show()
+        self._refresh()
+
+    def _take(self):
+        """Take the shown references out of the list, without deleting them."""
+        cards, self._cards = self._cards, []
+        for card in cards:
+            self._list.removeWidget(card)
+            card.hide()
+        return cards
+
+    @staticmethod
+    def _discard(cards):
+        for card in cards:
+            card.setParent(None)
+            card.deleteLater()
 
     # ---- Adding and removing -------------------------------------------------
 
@@ -271,8 +327,7 @@ class ReferenceEditor(QWidget):
     def remove(self, card):
         self._cards.remove(card)
         self._list.removeWidget(card)
-        card.setParent(None)
-        card.deleteLater()
+        self._discard([card])
         self._refresh()
         self.changed()
 

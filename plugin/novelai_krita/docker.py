@@ -742,8 +742,8 @@ class NovelAIDocker(DockWidget):
         if not self._model_name():
             self._say("Choose or type a model first.")
             return
-        prompt = self.prompt.toPlainText().strip()
-        if not prompt:
+        prompt = self.prompt.toPlainText()  # As typed: the site doesn't trim it.
+        if not prompt.strip():
             self._say("Write a prompt first.")
             return
         problem = self.characters.problem()

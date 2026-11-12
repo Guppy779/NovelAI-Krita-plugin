@@ -303,7 +303,7 @@ def build_payload(p: GenerationParams) -> dict:
     # They're the generating model's: V5 Curated inpaints with V4.5 Curated's model.
     action = p.action
     model = inpainting_model(p.model) if action == "infill" else p.model
-    prompt = presets.apply_quality(model, p.prompt.strip(), p.quality)
+    prompt = presets.apply_quality(model, p.prompt, p.quality)
     negative, uc_index = presets.apply_uc(model, p.prompt, p.negative_prompt, p.uc_preset)
 
     params = {
@@ -339,16 +339,17 @@ def build_payload(p: GenerationParams) -> dict:
             params["noise_schedule"] = "karras"
         # Characters as the NovelAI site sends them: in "characterPrompts",
         # and as character captions next to the base prompt. Quality tags and
-        # the preset stay in the base prompt.
+        # the preset stay in the base prompt. Their text goes as typed, since
+        # the site doesn't trim it either.
         characters = [c for c in p.characters if c.enabled and c.prompt.strip()]
         char_prompts, char_negatives, character_prompts = [], [], []
         for character in characters:
             x, y = character_position(model, character.x, character.y)
             centers = [{"x": x, "y": y}]
-            char_prompts.append({"char_caption": character.prompt.strip(), "centers": centers})
-            char_negatives.append({"char_caption": character.negative.strip(), "centers": centers})
+            char_prompts.append({"char_caption": character.prompt, "centers": centers})
+            char_negatives.append({"char_caption": character.negative, "centers": centers})
             character_prompts.append({
-                "prompt": character.prompt.strip(), "uc": character.negative.strip(),
+                "prompt": character.prompt, "uc": character.negative,
                 "center": {"x": x, "y": y}, "enabled": True})
         use_coords = bool(p.use_coords and characters)
         params.update({

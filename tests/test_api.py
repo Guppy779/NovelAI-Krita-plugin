@@ -75,7 +75,7 @@ def test_text_to_image_payload_v45():
     assert payload["action"] == "generate"
     assert payload["model"] == "nai-diffusion-4-5-full"
     params = payload["parameters"]
-    assert payload["input"] == "1girl, night sky, location, very aesthetic, masterpiece, no text"
+    assert payload["input"] == "1girl, night sky, very aesthetic, masterpiece, no text"
     assert params["v4_prompt"]["caption"]["base_caption"] == payload["input"]
     negative = params["negative_prompt"]
     assert negative.startswith("nsfw, lowres, artistic error") and negative.endswith(", red eyes")
@@ -92,7 +92,7 @@ def test_quality_tags_and_preset_can_be_turned_off():
         prompt="cat", quality="off", uc_preset="None", negative_prompt="dog"))
     assert payload["input"] == "cat"
     params = payload["parameters"]
-    assert params["negative_prompt"] == "nsfw, dog"
+    assert params["negative_prompt"] == "dog"  # No preset: no "nsfw" either.
     assert params["qualityToggle"] is False and params["ucPreset"] == 4
 
 
@@ -344,6 +344,29 @@ def characters_payload(model="nai-diffusion-4-5-full", use_coords=True, **extra)
         use_coords=use_coords, uc_preset="None", **extra))["parameters"]
 
 
+def test_prompts_are_sent_as_typed():
+    # The site trims nothing, so a space or a new line at the end is sent too.
+    payload = api.build_payload(api.GenerationParams(
+        prompt=" 1girl, \n", negative_prompt=" dog, ", quality="off", uc_preset="None"))
+    assert payload["input"] == " 1girl, \n"
+    assert payload["parameters"]["negative_prompt"] == " dog, "
+    payload = api.build_payload(api.GenerationParams(prompt="1girl, ", negative_prompt="dog, "))
+    assert payload["input"] == "1girl, , very aesthetic, masterpiece, no text"
+    assert payload["parameters"]["negative_prompt"].endswith("blank page, dog, ")
+
+
+def test_character_text_is_sent_as_typed():
+    # The site doesn't trim it, so neither does the plugin.
+    params = api.build_payload(api.GenerationParams(
+        prompt="2people", uc_preset="None",
+        characters=[api.CharacterPrompt("girl, red hair, ", " blue hair")]))["parameters"]
+    assert params["v4_prompt"]["caption"]["char_captions"][0]["char_caption"] == "girl, red hair, "
+    assert params["v4_negative_prompt"]["caption"]["char_captions"][0]["char_caption"] == (
+        " blue hair")
+    assert params["characterPrompts"][0]["prompt"] == "girl, red hair, "
+    assert params["characterPrompts"][0]["uc"] == " blue hair"
+
+
 def test_character_payload_v45_snaps_to_the_grid():
     params = characters_payload()
     prompt, negative = params["v4_prompt"], params["v4_negative_prompt"]
@@ -359,7 +382,7 @@ def test_character_payload_v45_snaps_to_the_grid():
         {"prompt": "boy, glasses", "uc": "", "center": {"x": 0.7, "y": 0.3}, "enabled": True}]
     assert params["use_coords"] is True and prompt["use_coords"] is True
     # Quality tags stay in the base prompt.
-    assert prompt["caption"]["base_caption"].startswith("2people, park, location")
+    assert prompt["caption"]["base_caption"].startswith("2people, park, very aesthetic")
 
 
 def test_character_payload_v5_keeps_exact_positions():

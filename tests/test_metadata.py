@@ -155,6 +155,39 @@ def test_split_quality_round_trips_every_model(family):
         assert metadata.split_quality(sent, model) == ("1girl, smile", level)
 
 
+def test_split_quality_finds_tags_in_front_of_the_text_to_draw():
+    sent = presets.apply_quality(V5, "1girl, sign. Text: hello|2girls", presets.LIGHT)
+    assert metadata.split_quality(sent, V5) == ("1girl, sign. Text: hello|2girls", presets.LIGHT)
+    v3 = "nai-diffusion-3"
+    sent = presets.apply_quality(v3, "1girl:0.5|1boy", presets.STANDARD)
+    assert metadata.split_quality(sent, v3) == ("1girl:0.5|1boy", presets.STANDARD)
+    # Only one of V3's parts has them: not the site's doing, so nothing is taken out.
+    half = sent.split("|")[0] + "|1boy"
+    assert metadata.split_quality(half, v3) == (half, presets.OFF)
+
+
+def test_tags_of_an_older_site_are_sent_again_unchanged():
+    # NovelAI's docs have "location" in V4.5's quality tags and the site's
+    # script doesn't. What isn't today's tags stays in the prompt.
+    model = "nai-diffusion-4-5-full"
+    old = "1girl, location, very aesthetic, masterpiece, no text"
+    prompt, level = metadata.split_quality(old, model)
+    assert (prompt, level) == ("1girl, location", presets.STANDARD)
+    assert presets.apply_quality(model, prompt, level) == old
+    old = "1girl, rating:general, amazing quality, very aesthetic, absurdres"
+    assert metadata.split_quality(old, "nai-diffusion-4-curated-preview") == (old, presets.OFF)
+
+
+@pytest.mark.parametrize("family", sorted(presets.UC_PRESETS))
+def test_split_uc_round_trips_every_model(family):
+    model = {"5-full": V5, "3": "nai-diffusion-3", "furry-3": "nai-diffusion-furry-3"}.get(
+        family, "nai-diffusion-%s" % family)
+    for preset in presets.uc_options(model):
+        for own in ("", "watermark, ", "watermark|crowd", "|crowd"):
+            sent, _ = presets.apply_uc(model, "1girl", own, preset)
+            assert metadata.split_uc(sent, model) == (own, preset), (preset, own)
+
+
 def test_split_quality_only_takes_tags_at_the_end():
     prompt = "very aesthetic, masterpiece, no text, 1girl"
     assert metadata.split_quality(prompt, V5) == (prompt, presets.OFF)
@@ -228,7 +261,8 @@ def test_import_keeps_tags_the_panel_model_lacks():
 
 def test_import_everything_clean():
     state = metadata.import_state(metadata.parse(FIELDS), PANEL, metadata.PARTS)
-    assert state["prompt"] == "1girl, autumn, pumpkin"
+    # Exactly what was typed, so that generating again sends the same text.
+    assert state["prompt"] == "1girl, autumn, pumpkin\n"
     assert state["quality_tags"] == presets.STANDARD
     assert state["negative_prompt"] == "watermark"
     assert state["characters"] == [IMPORTED] and state["character_positions"] is True
@@ -260,7 +294,7 @@ def test_import_settings_changes_the_model_before_moving_tags():
     panel = dict(PANEL, model="nai-diffusion-4-full")
     state = metadata.import_state(metadata.parse(FIELDS), panel, metadata.PARTS)
     assert state["model"] == V5
-    assert state["prompt"] == "1girl, autumn, pumpkin"
+    assert state["prompt"] == "1girl, autumn, pumpkin\n"
     assert state["quality_tags"] == presets.STANDARD
 
 

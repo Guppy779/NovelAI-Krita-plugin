@@ -264,43 +264,30 @@ def parse(fields: Dict[str, str]) -> Optional[ImageInfo]:
 # ---- Separating what NovelAI added -------------------------------------------
 
 # Only the current model's tags and presets are taken out of the text: those
-# are the ones its boxes can add back. Longest first, as a longer text can
-# start with a shorter one (Human Focus is Heavy plus more tags).
+# are the ones its boxes can add back. Anything else stays in the text as it
+# was sent (tags from an older version of the site, say), so generating again
+# sends the same. Longest first, as a longer text can contain a shorter one.
 
 
 def split_quality(prompt: str, model: str) -> Tuple[str, str]:
     """(prompt without quality tags, quality level) of a recorded prompt."""
     tags = presets.QUALITY_TAGS.get(presets.model_key(model), {})
-    for level, text in sorted(tags.items(), key=lambda item: -len(item[1])):
-        if prompt.endswith(text):
-            return prompt[:-len(text)].rstrip(), level
+    for level, _ in sorted(tags.items(), key=lambda item: -len(item[1])):
+        without = presets.remove_quality(model, prompt, level)
+        if without is not None:
+            return without, level
     return prompt, presets.OFF
 
 
 def split_uc(negative: str, model: str) -> Tuple[str, str]:
     """(the user's own undesired content, preset name) of a recorded one.
 
-    The site writes "nsfw, " (for models that aren't Curated), then the
-    preset, then the user's own text. "nsfw" is only removed together with
-    a preset and for a model that isn't Curated, so it is never lost:
-    generating adds it back, as the site does.
+    The site writes "nsfw, " (with a preset, for models that aren't
+    Curated), then the preset, then the user's own text. "nsfw" is only
+    removed together with a preset, so it is never lost: generating adds it
+    back, as the site does.
     """
-    text = negative.strip()
-    options = sorted(presets.UC_PRESETS.get(presets.model_key(model), []),
-                     key=lambda item: -len(item[1]))
-    for lead in ("",) if presets.is_curated(model) else ("nsfw, ", ""):
-        if not text.startswith(lead):
-            continue
-        rest = text[len(lead):]
-        for name, preset in options:
-            if rest == preset:
-                return "", name
-            if rest.startswith(preset):
-                tail = rest[len(preset):]
-                separator = " " if preset.endswith(",") else ", "
-                if tail.startswith(separator):
-                    return tail[len(separator):].strip(), name
-    return text, presets.NONE
+    return presets.remove_uc(model, negative)
 
 
 PROMPT, NEGATIVE, CHARACTERS, SETTINGS, SEED = (

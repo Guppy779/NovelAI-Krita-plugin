@@ -135,8 +135,8 @@ until you clear them, switch document or change the canvas size, and aren't save
 
 - **Quality tags** and **Undesired preset** work like the toggles under the prompt box on
   the NovelAI site. They are added to the request but not shown in the text boxes. As on the
-  site, models that aren't Curated also get `nsfw` in the undesired content, unless your
-  prompt contains it.
+  site, with an undesired preset other than **None**, models that aren't Curated also get
+  `nsfw` in the undesired content, unless your prompt contains it.
 - **Autocomplete** suggests tags for the word at the cursor, free of charge. Use Up and Down
   to choose, **Tab** or **Enter** to insert, and **Escape** to close the list. Italic
   suggestions are fuzzy matches.
@@ -386,10 +386,11 @@ quality tags or Undesired Content presets:
 
 - Model names in `api.py` come from the NovelAI web app. You can also type any model name
   into the model box.
-- Quality tags and presets in `presets.py` are copied from NovelAI's docs
-  ([quality tags](https://docs.novelai.net/en/image/qualitytags),
-  [undesired content](https://docs.novelai.net/en/image/undesiredcontent)) and combined the
-  way the site combines them.
+- Quality tags and presets in `presets.py` are the ones in the NovelAI site's own script,
+  combined with your text the way the site combines them. They differ in places from
+  NovelAI's docs ([quality tags](https://docs.novelai.net/en/image/qualitytags),
+  [undesired content](https://docs.novelai.net/en/image/undesiredcontent)).
+- Prompts are sent as typed, without trimming spaces at the ends, as the site sends them.
 
 ## License
 

@@ -518,21 +518,19 @@ class ToolsWindow(QWidget):
         if origin is not None and not canvas.document_is_open(origin[0]):
             origin = None
         results = []
-        problem = ""
         for index, (data, _) in enumerate(images):
             image = QImage.fromData(data)
             if image.isNull():
                 continue
             label = "%s (%s)" % (name, names[index]) if index < len(names) else name
-            # The layer gets the picture alone, without anything NovelAI hides in it.
-            layer = canvas.without_hidden_data(image)
+            # A result that shows the canvas goes back onto it (the docker
+            # fits it when it is added).
             document = None
             if origin is not None and api.same_shape(image.width(), image.height(), *origin[1:]):
                 document = origin[0]
-                layer = canvas.sharp_resize(layer, origin[1], origin[2])
-                problem = problem or canvas.scaling_problem
-            results.append(self._host.add_tool_result(
-                layer.convertToFormat(QImage.Format.Format_ARGB32), document, data, label))
+            # The layer gets the picture alone, without anything NovelAI hides in it.
+            layer = canvas.without_hidden_data(image).convertToFormat(QImage.Format.Format_ARGB32)
+            results.append(self._host.add_tool_result(layer, document, data, label))
         if not results:
             self._say("NovelAI returned no picture.")
             return
@@ -540,10 +538,7 @@ class ToolsWindow(QWidget):
         self._results_origin = origin
         self._show_choices(names if len(results) == len(names) else [])
         self._show_result(0)
-        text = "%s done in %.1f s." % (name, elapsed)
-        if problem:
-            text += " Sharp scaling wasn't available: %s." % problem
-        self._say(text)
+        self._say("%s done in %.1f s." % (name, elapsed))
 
     # ---- The result ----------------------------------------------------------
 

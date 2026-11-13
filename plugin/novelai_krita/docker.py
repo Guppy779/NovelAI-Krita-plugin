@@ -40,9 +40,12 @@ class Result:
     custom_positions: bool = False
     shown: QImage = None  # Inpainting: the result as it will look on the canvas.
     # A director tool's or the upscaler's result: its name, e.g. "Line Art".
-    # Such a result has no seed or prompt.
+    # Such a result has no seed or prompt, and its image is at the size
+    # NovelAI made it.
     label: str = ""
-    centre: bool = False  # It isn't fitted to a canvas: it goes in the middle.
+    # It was made from a canvas: it is fitted to the canvas when it's added.
+    # Otherwise it goes in at its own size, in the middle.
+    fit: bool = False
 
     @property
     def name(self) -> str:
@@ -1046,10 +1049,10 @@ class NovelAIDocker(DockWidget):
 
     def add_tool_result(self, image, document, original, label):
         """Keep a tool's result in the history. ``image`` is the picture for a
-        layer: fitted to ``document``'s canvas, or without one, at its own
-        size, to go in the middle of whichever document it is added to."""
+        layer, at its own size. ``document`` is the one whose canvas it was
+        made from, if it was made from a canvas."""
         result = Result(image=image, x=0, y=0, seed=0, prompt="", document=document,
-                        original=original, label=label, centre=document is None)
+                        original=original, label=label, fit=document is not None)
         self._add_history(result)
         return result
 
@@ -1068,12 +1071,24 @@ class NovelAIDocker(DockWidget):
         doc = self._target(result)
         if doc is None:
             return "Open a document to add the result."
-        x, y = result.x, result.y
-        if result.centre:
-            x = (doc.width() - result.image.width()) // 2
-            y = (doc.height() - result.image.height()) // 2
-        canvas.insert_layer(doc, result.image, x, y, result.name)
-        return "Added as a new layer."
+        if not result.label:
+            canvas.insert_layer(doc, result.image, result.x, result.y, result.name)
+            return "Added as a new layer."
+        # A tool's result. One made from a canvas is fitted to the canvas as
+        # it is now, which may have been resized since.
+        image, text = result.image, "Added as a new layer."
+        width, height = doc.width(), doc.height()
+        if result.fit and api.same_shape(image.width(), image.height(), width, height):
+            QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+            try:
+                image = canvas.sharp_resize(image, width, height)
+            finally:
+                QApplication.restoreOverrideCursor()
+            if canvas.scaling_problem:
+                text += " Sharp scaling wasn't available: %s." % canvas.scaling_problem
+        canvas.insert_layer(doc, image, (width - image.width()) // 2,
+                            (height - image.height()) // 2, result.name)
+        return text
 
     def resize_canvas_to(self, result):
         """Scale the document to the result's own size and add the result."""

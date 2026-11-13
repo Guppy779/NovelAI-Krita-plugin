@@ -140,6 +140,21 @@ class NovelAIClient(QObject):
         reply.finished.connect(finished)
         return job
 
+    def _post_for_pictures(self, url, token, payload, on_success, on_error):
+        request = self._request(url, token, GENERATE_TIMEOUT_MS)
+        request.setRawHeader(b"Accept", b"*/*")  # As the site asks; the answer is a zip.
+        reply = self._manager.post(request, QByteArray(json.dumps(payload).encode("utf-8")))
+        return self._watch(reply, on_success, on_error, api.parse_images)
+
+    def augment(self, token, payload, on_success, on_error):
+        """POST /ai/augment-image (director tools). ``on_success`` receives
+        [(bytes, None)], one picture or more depending on the tool."""
+        return self._post_for_pictures(api.AUGMENT_URL, token, payload, on_success, on_error)
+
+    def upscale(self, token, payload, on_success, on_error):
+        """POST /ai/upscale. ``on_success`` receives [(bytes, None)]."""
+        return self._post_for_pictures(api.UPSCALE_URL, token, payload, on_success, on_error)
+
     def suggest_tags(self, token, model, query, lang, on_success, on_error):
         """GET /ai/generate-image/suggest-tags. ``on_success`` receives [TagSuggestion]."""
         url = api.suggest_tags_url(model, query, lang)

@@ -685,3 +685,149 @@ class SSEParser:
             )
         except (ValueError, TypeError):  # Bad JSON, numbers or base64: skip the event.
             return None
+
+
+# ---- Director tools (POST /ai/augment-image) and upscaling (POST /ai/upscale) ----
+#
+# Sizes, prices and request fields follow the NovelAI site's own script (its
+# Director Tools page), not the docs, which give neither.
+
+AUGMENT_URL = IMAGE_API + "/ai/augment-image"
+UPSCALE_URL = IMAGE_API + "/ai/upscale"
+
+TOOLS = [
+    ("bg-removal", "Remove BG"),
+    ("lineart", "Line Art"),
+    ("sketch", "Sketch"),
+    ("colorize", "Colorize"),
+]
+COLORIZE = "colorize"
+REMOVE_BG = "bg-removal"
+# The pictures a tool answers with, in order, when there is more than one.
+TOOL_RESULTS = {REMOVE_BG: ["Masked", "Generated", "Blend"]}
+MAX_DEFRY = 5
+
+TOOL_MAX_PIXELS = 3145728  # Larger pictures are made smaller before sending...
+_TOOL_MAX_SENT = TOOL_MAX_PIXELS - 2000  # ...to at most this.
+TOOL_MIN_PIXELS = 1048576  # Smaller pictures are enlarged to about this...
+_TOOL_ENLARGE_BELOW = 1011712  # ...when they are below this.
+_TOOL_STEPS = 28  # A tool is priced like a generation of this many steps.
+_TOOL_MAX_PRICE = 140
+
+UPSCALE_MAX_PIXELS = 1048576
+UPSCALE_MODEL = "nai-diffusion-5-curated"
+UPSCALE_BLUR = 0
+_UPSCALE_PRICES = ((1048576, 1), (1747627, 2), (2446678, 3), (3145728, 4))
+
+
+def tool_name(tool: str) -> str:
+    return dict(TOOLS).get(tool, tool)
+
+
+def _to_area(width: int, height: int, pixels: int) -> Tuple[int, int]:
+    """Scale a size to ``pixels`` of area, rounding each side down, as the site does."""
+    ratio = math.sqrt(pixels / float(width * height))
+    return int(math.floor(width * ratio)), int(math.floor(height * ratio))
+
+
+def tool_size(width: int, height: int, max_pixels: int = _TOOL_MAX_SENT) -> Tuple[int, int]:
+    """The size a picture of (width, height) is sent to a director tool at.
+
+    The site makes a large picture smaller and enlarges a small one to about
+    one megapixel, keeping its shape; sides needn't be multiples of anything.
+    ``max_pixels`` lowers the upper limit (the plugin's Max generation size).
+    """
+    if width <= 0 or height <= 0:
+        raise ValueError("width and height must be positive")
+    limit = max(TOOL_MIN_PIXELS, min(max_pixels, _TOOL_MAX_SENT))
+    if width * height > limit:
+        width, height = _to_area(width, height, limit)
+    if width * height < _TOOL_ENLARGE_BELOW:
+        width, height = _to_area(width, height, TOOL_MIN_PIXELS)
+    return width, height
+
+
+def tool_price(tool: str, width: int, height: int,
+               account: "Optional[Account]" = None) -> Optional[int]:
+    """Anlas the site shows for a tool on a picture of (width, height); 0 when
+    free, None when the site calls it invalid.
+
+    A tool costs what a 28-step V3 generation of that size costs, so it is
+    free on Opus up to 1024 x 1024 in area. Remove BG is never free and
+    costs three times that plus 5. Without ``account`` an Opus plan is assumed.
+    """
+    if width <= 0 or height <= 0:
+        return None
+    if width * height > TOOL_MAX_PIXELS:
+        width, height = _to_area(width, height, TOOL_MAX_PIXELS)
+    if width * height < TOOL_MIN_PIXELS:
+        width, height = _to_area(width, height, TOOL_MIN_PIXELS)
+    pixels = width * height
+    price = math.ceil(2951823174884865e-21 * pixels
+                      + 5753298233447344e-22 * pixels * _TOOL_STEPS)
+    price = max(price, 2)
+    if price > _TOOL_MAX_PRICE:
+        return None
+    if tool == REMOVE_BG:
+        return 3 * price + 5
+    opus = account is None or (account.active and (account.tier or 0) >= OPUS_TIER)
+    return 0 if opus and pixels <= FREE_MAX_PIXELS else price
+
+
+def tool_cost(tool: str, width: int, height: int,
+              account: "Optional[Account]" = None) -> str:
+    """The price of a tool on a picture and why it isn't free, e.g. "65 Anlas:
+    Remove BG is never free"; empty when it's free."""
+    price = tool_price(tool, width, height, account)
+    if not price:
+        return ""
+    opus = account is None or (account.active and (account.tier or 0) >= OPUS_TIER)
+    if tool == REMOVE_BG:
+        reason = "%s is never free" % tool_name(tool)
+    elif not opus:
+        reason = "free tools need an Opus plan (yours: %s)" % account.plan_name
+    else:
+        reason = "%d x %d is larger than 1024 x 1024" % (width, height)
+    return "%d Anlas: %s" % (price, reason)
+
+
+def same_shape(width: int, height: int, other_width: int, other_height: int) -> bool:
+    """Whether two sizes have the same proportions, give or take the rounding
+    of a size to whole pixels."""
+    if min(width, height, other_width, other_height) <= 0:
+        return False
+    a, b = width * other_height, height * other_width
+    return abs(a - b) <= 0.01 * max(a, b)
+
+
+def build_tool_payload(tool: str, image: str, width: int, height: int,
+                       defry: int = 0, prompt: str = "") -> dict:
+    """Request body for a director tool. ``image`` is a base64 PNG already at
+    (width, height), which is ``tool_size`` of the picture's own size.
+    ``defry`` and ``prompt`` are Colorize's and go with no other tool."""
+    payload = {"req_type": tool, "use_new_shared_trial": True}
+    if tool == COLORIZE:
+        payload["prompt"] = prompt
+        payload["defry"] = max(0, min(MAX_DEFRY, int(defry)))
+    payload.update(width=int(width), height=int(height), image=image)
+    return payload
+
+
+def can_upscale(width: int, height: int) -> bool:
+    return 0 < width * height <= UPSCALE_MAX_PIXELS
+
+
+def upscale_price(width: int, height: int) -> Optional[int]:
+    """Anlas the site shows for upscaling a picture; None when it is too large."""
+    if not can_upscale(width, height):
+        return None
+    for pixels, price in _UPSCALE_PRICES:
+        if width * height <= pixels:
+            return price
+    return None
+
+
+def build_upscale_payload(image: str) -> dict:
+    """Request body for the upscaler. ``image`` is the base64 picture as it is;
+    the site doesn't scale it first."""
+    return {"image": image, "model": UPSCALE_MODEL, "declared_blur_sigma": UPSCALE_BLUR}

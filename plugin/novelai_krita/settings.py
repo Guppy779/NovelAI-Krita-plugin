@@ -34,6 +34,12 @@ DEFAULTS = {
     "live_preview": "true",
     "history_limit": "50",
     "preview_geometry": "",
+    # The director tools window: the tool last used, Colorize's defry, where
+    # a picture was last opened from. Its prompt isn't kept.
+    "tool": "lineart",
+    "tool_defry": "0",
+    "tool_dir": "",
+    "tools_geometry": "",
     # What "Import from image" imports (metadata.PARTS, plus "clean").
     "import_parts": "characters,clean,negative,prompt,seed,settings",
 }

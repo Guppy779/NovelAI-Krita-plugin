@@ -176,6 +176,19 @@ def picture_to_send(doc, region: Region, width: int, height: int) -> QImage:
     return exact_resize(read_image(doc, region), width, height).convertToFormat(_RGBA)
 
 
+def read_picture(doc) -> QImage:
+    """The visible canvas as a picture with its transparency: what a director
+    tool is given. The site sends a tool the picture as it is, clear parts
+    and NovelAI's hidden data included, unlike image to image."""
+    return doc.projection(0, 0, doc.width(), doc.height()).convertToFormat(_RGBA)
+
+
+def tool_picture(image: QImage, width: int, height: int) -> QImage:
+    """``image`` as the site sends it to a director tool: scaled to the size
+    with the site's own arithmetic, transparency kept, nothing put behind it."""
+    return exact_resize(image, width, height).convertToFormat(_RGBA)
+
+
 def careful_resize(image: QImage, width: int, height: int, region: Region) -> QImage:
     """The scaling for a finished result of ``region``."""
     global scaling_problem
@@ -265,6 +278,35 @@ def write_pixels(doc, node, image: QImage, x: int, y: int) -> None:
     node.setPixelData(QByteArray(image_bytes(image)), x, y, image.width(), image.height())
     if not native:
         node.setColorSpace(doc.colorModel(), doc.colorDepth(), doc.colorProfile())
+
+
+def scale_document(doc, width: int, height: int) -> None:
+    """Scale the whole document, layers and all, to a new size (Image > Scale
+    Image To New Size)."""
+    doc.scaleImage(width, height, int(doc.xRes()), int(doc.yRes()), "Bicubic")
+    doc.waitForDone()
+
+
+def new_document(image: QImage, name: str, like=None):
+    """Open ``image`` as a new document with one layer, and show it.
+
+    ``like``: a document to take the resolution from.
+    """
+    app = Krita.instance()
+    resolution = float(like.xRes()) if like is not None else 300.0
+    doc = app.createDocument(image.width(), image.height(), name, "RGBA", "U8", "", resolution)
+    root = doc.rootNode()
+    filled = root.childNodes()  # Krita starts a document with a white layer.
+    node = doc.createNode(name, "paintlayer")
+    root.addChildNode(node, None)
+    write_pixels(doc, node, image, 0, 0)
+    for other in filled:
+        other.remove()
+    doc.refreshProjection()
+    window = app.activeWindow()
+    if window is not None:
+        window.addView(doc)
+    return doc
 
 
 def read_annotation(doc, key: str) -> bytes:

@@ -515,3 +515,107 @@ def test_references_always_cost_anlas():
         "1 precise reference (5 Anlas per image)"]
     assert api.anlas_warnings(832, 1216, 28, 1, references=3) == [
         "3 precise references (15 Anlas per image)"]
+
+
+# Director tools. Expected sizes and prices come from the NovelAI site's own
+# arithmetic, run in Node: (picture size, size sent, price on Opus, price on
+# another plan, price of Remove BG).
+TOOL_CASES = [
+    ((1024, 1024), (1024, 1024), 0, 20, 65),
+    ((832, 1216), (832, 1216), 0, 20, 65),
+    ((1216, 832), (1216, 832), 0, 20, 65),
+    ((512, 512), (1024, 1024), 0, 20, 65),  # Small pictures are enlarged.
+    ((300, 200), (1254, 836), 0, 20, 65),
+    ((640, 360), (1365, 768), 0, 20, 65),
+    ((1, 1), (1024, 1024), 0, 20, 65),
+    ((100, 5000), (144, 7240), 0, 20, 65),
+    ((1000, 1010), (1018, 1029), 0, 20, 65),  # Just under the limit for enlarging.
+    ((1005, 1007), (1005, 1007), 0, 20, 65),  # Just over it: sent as it is.
+    ((1024, 1025), (1024, 1025), 21, 21, 68),  # Over 1024 x 1024: Opus pays too.
+    ((1536, 1536), (1536, 1536), 45, 45, 140),
+    ((1773, 1773), (1773, 1773), 60, 60, 185),
+    ((1774, 1774), (1773, 1773), 60, 60, 185),  # Large pictures are made smaller.
+    ((2048, 2048), (1773, 1773), 60, 60, 185),
+    ((4000, 3000), (2047, 1535), 60, 60, 185),
+]
+
+
+@pytest.mark.parametrize("size, sent, opus, other, remove_bg", TOOL_CASES)
+def test_tool_size_and_price_follow_the_site(size, sent, opus, other, remove_bg):
+    scroll = api.Account(tier=2, active=True)
+    assert api.tool_size(*size) == sent
+    for tool in ("lineart", "sketch", "colorize"):
+        assert api.tool_price(tool, *size) == opus  # No account yet: Opus is assumed.
+        assert api.tool_price(tool, *size, api.Account(tier=3, active=True)) == opus
+        assert api.tool_price(tool, *size, scroll) == other
+        assert api.tool_price(tool, *size, api.Account(tier=3, active=False)) == other
+    assert api.tool_price("bg-removal", *size) == remove_bg  # Never free.
+    assert api.tool_price("bg-removal", *size, scroll) == remove_bg
+
+
+def test_tool_size_keeps_within_max_generation_size():
+    limit = 1024 * 1024
+    assert api.tool_size(1024, 1024, limit) == (1024, 1024)
+    assert api.tool_size(832, 1216, limit) == (832, 1216)
+    assert api.tool_size(512, 512, limit) == (1024, 1024)
+    width, height = api.tool_size(2048, 1536, limit)
+    assert width * height <= limit and abs(width / height - 2048 / 1536) < 0.01
+    assert api.tool_price("lineart", width, height) == 0  # So Opus stays free.
+    # A limit above the site's own, or below what it enlarges to, changes nothing.
+    assert api.tool_size(4000, 3000, 4096 * 4096) == (2047, 1535)
+    assert api.tool_size(512, 512, 256 * 256) == (1024, 1024)
+    with pytest.raises(ValueError):
+        api.tool_size(0, 10)
+    assert api.tool_price("lineart", 0, 10) is None
+
+
+def test_tool_payload_matches_the_site():
+    assert api.build_tool_payload("lineart", "aW1hZ2U=", 832, 1216) == {
+        "req_type": "lineart", "use_new_shared_trial": True,
+        "width": 832, "height": 1216, "image": "aW1hZ2U="}
+    assert api.build_tool_payload("colorize", "aW1hZ2U=", 1024, 1024, defry=3,
+                                  prompt="red hair") == {
+        "req_type": "colorize", "use_new_shared_trial": True, "prompt": "red hair",
+        "defry": 3, "width": 1024, "height": 1024, "image": "aW1hZ2U="}
+    assert api.build_tool_payload("colorize", "A", 64, 64)["prompt"] == ""  # Sent empty.
+    assert api.build_tool_payload("colorize", "A", 64, 64, defry=9)["defry"] == 5
+    for tool in ("bg-removal", "lineart", "sketch"):  # Colorize's fields stay with it.
+        payload = api.build_tool_payload(tool, "A", 64, 64, defry=2, prompt="blue eyes")
+        assert "defry" not in payload and "prompt" not in payload
+
+
+def test_tool_cost_says_why():
+    scroll = api.Account(tier=2, active=True)
+    assert api.tool_cost("lineart", 1024, 1024) == ""  # Free: nothing to say.
+    assert api.tool_cost("bg-removal", 1024, 1024) == "65 Anlas: Remove BG is never free"
+    assert api.tool_cost("bg-removal", 1024, 1024, scroll) == "65 Anlas: Remove BG is never free"
+    assert api.tool_cost("sketch", 832, 1216, scroll) == (
+        "20 Anlas: free tools need an Opus plan (yours: Scroll)")
+    assert api.tool_cost("colorize", 1536, 1536) == (
+        "45 Anlas: 1536 x 1536 is larger than 1024 x 1024")
+
+
+def test_same_shape_allows_for_rounding():
+    assert api.same_shape(1024, 1024, 1536, 1536)
+    assert api.same_shape(1023, 1023, 1536, 1536)
+    assert api.same_shape(1254, 836, 300, 200)  # What the site enlarges 300 x 200 to.
+    assert api.same_shape(1664, 2432, 832, 1216)
+    assert not api.same_shape(1280, 720, 1024, 1024)
+    assert not api.same_shape(832, 1216, 1216, 832)
+    assert not api.same_shape(0, 10, 0, 10)
+
+
+def test_tool_names_and_results():
+    assert [tool for tool, _ in api.TOOLS] == ["bg-removal", "lineart", "sketch", "colorize"]
+    assert api.tool_name("bg-removal") == "Remove BG"
+    assert api.tool_name("something-new") == "something-new"
+    assert api.TOOL_RESULTS["bg-removal"] == ["Masked", "Generated", "Blend"]
+
+
+def test_upscale_follows_the_site():
+    assert api.build_upscale_payload("aW1hZ2U=") == {
+        "image": "aW1hZ2U=", "model": "nai-diffusion-5-curated", "declared_blur_sigma": 0}
+    assert api.can_upscale(1024, 1024) and api.upscale_price(1024, 1024) == 1
+    assert api.upscale_price(512, 768) == 1
+    assert not api.can_upscale(1024, 1025) and api.upscale_price(1024, 1025) is None
+    assert not api.can_upscale(0, 100) and api.upscale_price(0, 100) is None

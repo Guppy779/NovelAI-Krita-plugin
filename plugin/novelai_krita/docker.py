@@ -15,6 +15,7 @@ from .preview import PreviewWindow, THUMBNAIL_SIZE
 from .prompt_edit import PromptEdit
 from .references import ReferenceEditor
 from .settings_dialog import SettingsDialog, max_pixels
+from .tools import ToolsWindow
 from .qt import (
     QApplication, QCheckBox, QComboBox, QDoubleSpinBox, QFileDialog, QFormLayout, QFrame,
     QHBoxLayout, QIcon, QImage, QLabel, QLineEdit, QListWidgetItem, QMenu, QMessageBox, QPixmap,
@@ -38,6 +39,16 @@ class Result:
     characters: list = field(default_factory=list)
     custom_positions: bool = False
     shown: QImage = None  # Inpainting: the result as it will look on the canvas.
+    # A director tool's or the upscaler's result: its name, e.g. "Line Art".
+    # Such a result has no seed or prompt.
+    label: str = ""
+    centre: bool = False  # It isn't fitted to a canvas: it goes in the middle.
+
+    @property
+    def name(self) -> str:
+        if self.label:
+            return "NovelAI %s" % self.label
+        return "NovelAI %d: %s" % (self.seed, self.prompt[:40])
 
 
 class _Panel(QWidget):
@@ -63,6 +74,7 @@ class NovelAIDocker(DockWidget):
         self._results = {}  # History item id -> Result.
         self._next_id = 0
         self.preview = PreviewWindow()  # Shows the image forming, and the results.
+        self.tools = None  # The director tools window, once it has been opened.
         self._mask = None  # The active document's inpainting mask.
         self._mask_picture = None  # What the mask thumbnail shows.
         # Each document keeps its own prompt and settings (see doc_state.py).
@@ -299,6 +311,13 @@ class NovelAIDocker(DockWidget):
         self.status.setWordWrap(True)
         layout.addWidget(self.status)
 
+        tools_button = QPushButton("Director tools...")
+        tools_button.setToolTip(
+            "Open the director tools: Remove BG, Line Art, Sketch, Colorize and\n"
+            "Upscale, for the canvas or any picture.")
+        tools_button.clicked.connect(self.open_tools)
+        layout.addWidget(tools_button)
+
         # The preview window's controls and history of results.
         self.history = self.preview.history
         self.history.customContextMenuRequested.connect(self._history_menu)
@@ -456,6 +475,8 @@ class NovelAIDocker(DockWidget):
                     else "Refine the whole canvas (image to image)")
         self.mode_label.setText(text)
         self._update_cost_warning(doc)
+        if self.tools is not None and self.tools.isVisible():
+            self.tools.refresh()  # Its notes depend on the account and settings too.
 
     @staticmethod
     def _generation_size(width, height, sends_image):
@@ -617,6 +638,8 @@ class NovelAIDocker(DockWidget):
         settings.set("show_advanced", self.advanced_toggle.isChecked())
         if self.preview.isVisible():
             self.preview.save_geometry()
+        if self.tools is not None and self.tools.isVisible():
+            self.tools.save_state()
 
     def import_image(self, path):
         """Import the prompt and settings recorded in a NovelAI image."""
@@ -936,7 +959,7 @@ class NovelAIDocker(DockWidget):
             THUMBNAIL_SIZE, THUMBNAIL_SIZE, Qt.AspectRatioMode.KeepAspectRatio,
             Qt.TransformationMode.SmoothTransformation)
         item = QListWidgetItem(QIcon(QPixmap.fromImage(thumb)), "")
-        item.setToolTip("Seed %d\n%s" % (result.seed, result.prompt[:200]))
+        item.setToolTip(result.label or "Seed %d\n%s" % (result.seed, result.prompt[:200]))
         item.setData(Qt.ItemDataRole.UserRole, self._next_id)
         self._results[self._next_id] = result
         self._next_id += 1
@@ -978,7 +1001,12 @@ class NovelAIDocker(DockWidget):
         is_webp = result.original[:4] == b"RIFF"
         extension = "webp" if is_webp else "png"
         folder = settings.get("save_dir") or os.path.join(os.path.expanduser("~"), "Pictures")
-        suggested = os.path.join(folder, "novelai_%d.%s" % (result.seed, extension))
+        if result.label:
+            words = "".join(c if c.isalnum() else " " for c in result.label.lower()).split()
+            suggested = "novelai_%s.%s" % ("_".join(words), extension)
+        else:
+            suggested = "novelai_%d.%s" % (result.seed, extension)
+        suggested = os.path.join(folder, suggested)
         path, _ = QFileDialog.getSaveFileName(
             self, "Save generated image", suggested,
             "WebP image (*.webp)" if is_webp else "PNG image (*.png)")
@@ -994,14 +1022,84 @@ class NovelAIDocker(DockWidget):
         self._say("Saved %s" % path)
 
     def _insert(self, result):
+        self._say(self.insert_result(result))
+
+    # ---- Director tools -----------------------------------------------------
+    #
+    # The tools window runs the tools. Its results are kept here, in the
+    # history, and put into documents from here. Each of the three ways of
+    # doing that returns what to tell the user.
+
+    def open_tools(self):
+        if self.tools is None:
+            self.tools = ToolsWindow(self._client, self)
+        self.tools.open(canvas.main_window())
+
+    def account(self):
+        return self._account
+
+    def add_tool_result(self, image, document, original, label):
+        """Keep a tool's result in the history. ``image`` is the picture for a
+        layer: fitted to ``document``'s canvas, or without one, at its own
+        size, to go in the middle of whichever document it is added to."""
+        result = Result(image=image, x=0, y=0, seed=0, prompt="", document=document,
+                        original=original, label=label, centre=document is None)
+        self._add_history(result)
+        return result
+
+    @staticmethod
+    def _target(result):
         doc = result.document if canvas.document_is_open(result.document) else None
-        doc = doc or canvas.active_document()
+        return doc or canvas.active_document()
+
+    @staticmethod
+    def _own_picture(result):
+        """A result at the size NovelAI made it, without its hidden data."""
+        image = canvas.without_hidden_data(QImage.fromData(result.original))
+        return image.convertToFormat(QImage.Format.Format_ARGB32)
+
+    def insert_result(self, result):
+        doc = self._target(result)
         if doc is None:
-            self._say("Open a document to add the result.")
-            return
-        name = "NovelAI %d: %s" % (result.seed, result.prompt[:40])
-        canvas.insert_layer(doc, result.image, result.x, result.y, name)
-        self._say("Added as a new layer.")
+            return "Open a document to add the result."
+        x, y = result.x, result.y
+        if result.centre:
+            x = (doc.width() - result.image.width()) // 2
+            y = (doc.height() - result.image.height()) // 2
+        canvas.insert_layer(doc, result.image, x, y, result.name)
+        return "Added as a new layer."
+
+    def resize_canvas_to(self, result):
+        """Scale the document to the result's own size and add the result."""
+        doc = self._target(result)
+        if doc is None:
+            return "Open a document first."
+        image = self._own_picture(result)
+        if image.isNull():
+            return "The result could not be read."
+        width, height = image.width(), image.height()
+        if not api.same_shape(width, height, doc.width(), doc.height()):
+            return ("The result (%d x %d) isn't the shape of the canvas (%d x %d), so the "
+                    "canvas can't be resized to it. Use New document instead."
+                    % (width, height, doc.width(), doc.height()))
+        if (width, height) == (doc.width(), doc.height()):
+            canvas.insert_layer(doc, image, 0, 0, result.name)
+            return "The canvas already has the result's size. Added as a new layer."
+        if width < doc.width():  # Never make someone's document smaller.
+            return ("The result (%d x %d) is smaller than the canvas (%d x %d), so the canvas "
+                    "was left as it is. Use Add as layer to fit the result to the canvas."
+                    % (width, height, doc.width(), doc.height()))
+        canvas.scale_document(doc, width, height)
+        canvas.insert_layer(doc, image, 0, 0, result.name)
+        return "Resized the canvas to %d x %d and added the result as a new layer." % (
+            width, height)
+
+    def open_as_document(self, result):
+        image = self._own_picture(result)
+        if image.isNull():
+            return "The result could not be read."
+        canvas.new_document(image, result.name, canvas.active_document())
+        return "Opened as a new document."
 
     def _history_menu(self, pos):
         item = self.history.itemAt(pos)
@@ -1016,16 +1114,23 @@ class NovelAIDocker(DockWidget):
         result = self._result(item)
         menu = QMenu(self)
         insert = menu.addAction("Add as new layer")
+        document = menu.addAction("Open as new document")
         save = menu.addAction("Save image...")
         menu.addSeparator()
-        use_seed = menu.addAction("Use this seed")
-        use_prompt = menu.addAction("Use this prompt")
-        menu.addSeparator()
+        use_seed = use_prompt = None
+        if not result.label:  # A tool's result has neither.
+            use_seed = menu.addAction("Use this seed")
+            use_prompt = menu.addAction("Use this prompt")
+            menu.addSeparator()
         remove = menu.addAction("Remove from history")
         clear = menu.addAction("Clear history...")
         chosen = menu.exec(self.history.mapToGlobal(pos))
+        if chosen is None:
+            return
         if chosen == insert:
             self._insert(result)
+        elif chosen == document:
+            self._say(self.open_as_document(result))
         elif chosen == save:
             self._save(result)
         elif chosen == remove:

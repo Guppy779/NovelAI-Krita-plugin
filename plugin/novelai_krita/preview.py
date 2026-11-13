@@ -6,9 +6,9 @@ docker decides what they do.
 
 from . import settings
 from .qt import (
-    QAbstractItemView, QByteArray, QHBoxLayout, QLabel, QListWidget, QPainter, QPen,
-    QProgressBar, QPushButton, QRectF, QSize, QStyle, QStyledItemDelegate, Qt, QVBoxLayout,
-    QWidget,
+    QAbstractItemView, QByteArray, QColor, QHBoxLayout, QLabel, QListWidget, QPainter, QPen,
+    QPixmap, QProgressBar, QPushButton, QRectF, QSize, QStyle, QStyledItemDelegate, Qt,
+    QVBoxLayout, QWidget,
 )
 
 THUMBNAIL_SIZE = 96
@@ -48,12 +48,31 @@ class _ThumbnailDelegate(QStyledItemDelegate):
         painter.restore()
 
 
-class _ImageView(QWidget):
-    """Shows an image as large as fits, keeping its shape."""
+_CHECK = 8  # Side of a square of the pattern behind a see-through picture.
 
-    def __init__(self):
+
+def _checks():
+    tile = QPixmap(2 * _CHECK, 2 * _CHECK)
+    tile.fill(QColor(204, 204, 204))
+    painter = QPainter(tile)
+    painter.fillRect(0, 0, _CHECK, _CHECK, QColor(255, 255, 255))
+    painter.fillRect(_CHECK, _CHECK, _CHECK, _CHECK, QColor(255, 255, 255))
+    painter.end()
+    return tile
+
+
+class ImageView(QWidget):
+    """Shows an image as large as fits, keeping its shape.
+
+    ``empty``: what it says while there is no image. ``checks``: draw a
+    checked pattern behind the image, so that clear parts show as clear.
+    """
+
+    def __init__(self, empty="Generated images appear here.", checks=False):
         super().__init__()
         self._image = None
+        self._empty = empty
+        self._checks = _checks() if checks else None
         self.setMinimumSize(256, 256)
 
     def set_image(self, image):
@@ -63,14 +82,15 @@ class _ImageView(QWidget):
     def paintEvent(self, event):
         painter = QPainter(self)
         if self._image is None or self._image.isNull():
-            painter.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter,
-                             "Generated images appear here.")
+            painter.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, self._empty)
             return
         painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
         size = self._image.size().scaled(self.size(), Qt.AspectRatioMode.KeepAspectRatio)
-        painter.drawImage(QRectF((self.width() - size.width()) / 2.0,
-                                 (self.height() - size.height()) / 2.0,
-                                 size.width(), size.height()), self._image)
+        target = QRectF((self.width() - size.width()) / 2.0,
+                        (self.height() - size.height()) / 2.0, size.width(), size.height())
+        if self._checks is not None and self._image.hasAlphaChannel():
+            painter.drawTiledPixmap(target, self._checks)
+        painter.drawImage(target, self._image)
 
 
 class PreviewWindow(QWidget):
@@ -82,7 +102,7 @@ class PreviewWindow(QWidget):
         self.resize(520, 720)
         self._restored = False
 
-        self.view = _ImageView()
+        self.view = ImageView()
 
         self.generate_button = QPushButton("Generate")
         self.generate_button.setMinimumHeight(32)

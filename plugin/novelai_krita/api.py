@@ -718,12 +718,13 @@ _TOOL_MAX_SENT = TOOL_MAX_PIXELS - 2000  # ...to at most this.
 TOOL_MIN_PIXELS = 1048576  # Smaller pictures are enlarged to about this...
 _TOOL_ENLARGE_BELOW = 1011712  # ...when they are below this.
 _TOOL_STEPS = 28  # A tool is priced like a generation of this many steps.
-_TOOL_MAX_PRICE = 140
 
 UPSCALE_MAX_PIXELS = 1048576
 UPSCALE_MODEL = "nai-diffusion-5-curated"
 UPSCALE_BLUR = 0
-_UPSCALE_PRICES = ((1048576, 1), (1747627, 2), (2446678, 3), (3145728, 4))
+# Anlas for a picture of up to UPSCALE_MAX_PIXELS. The site's price list goes
+# on to 4 Anlas at three times that, but the site upscales nothing larger.
+UPSCALE_PRICE = 1
 
 
 def tool_name(tool: str) -> str:
@@ -756,11 +757,13 @@ def tool_size(width: int, height: int, max_pixels: int = _TOOL_MAX_SENT) -> Tupl
 def tool_price(tool: str, width: int, height: int,
                account: "Optional[Account]" = None) -> Optional[int]:
     """Anlas the site shows for a tool on a picture of (width, height); 0 when
-    free, None when the site calls it invalid.
+    free, None for a picture without a size.
 
     A tool costs what a 28-step V3 generation of that size costs, so it is
     free on Opus up to 1024 x 1024 in area. Remove BG is never free and
     costs three times that plus 5. Without ``account`` an Opus plan is assumed.
+    The largest picture a tool is sent costs 60, well under the 140 Anlas at
+    which the site calls a generation invalid.
     """
     if width <= 0 or height <= 0:
         return None
@@ -772,8 +775,6 @@ def tool_price(tool: str, width: int, height: int,
     price = math.ceil(2951823174884865e-21 * pixels
                       + 5753298233447344e-22 * pixels * _TOOL_STEPS)
     price = max(price, 2)
-    if price > _TOOL_MAX_PRICE:
-        return None
     if tool == REMOVE_BG:
         return 3 * price + 5
     return 0 if free_on_plan(account) and pixels <= FREE_MAX_PIXELS else price
@@ -823,12 +824,7 @@ def can_upscale(width: int, height: int) -> bool:
 
 def upscale_price(width: int, height: int) -> Optional[int]:
     """Anlas the site shows for upscaling a picture; None when it is too large."""
-    if not can_upscale(width, height):
-        return None
-    for pixels, price in _UPSCALE_PRICES:
-        if width * height <= pixels:
-            return price
-    return None
+    return UPSCALE_PRICE if can_upscale(width, height) else None
 
 
 def build_upscale_payload(image: str) -> dict:

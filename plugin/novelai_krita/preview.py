@@ -93,14 +93,46 @@ class ImageView(QWidget):
         painter.drawImage(target, self._image)
 
 
-class PreviewWindow(QWidget):
+class FloatingWindow(QWidget):
+    """A window that stays above Krita without blocking it, and comes back
+    where it was left. ``geometry_key`` names the setting its place is kept in."""
+
+    geometry_key = ""
+
     def __init__(self):
         super().__init__(None, Qt.WindowType.Tool)
+        self._restored = False
+
+    def open(self, owner=None):
+        """Show the window, kept above ``owner`` (Krita's main window)."""
+        if owner is not None and self.parent() is None:
+            self.setParent(owner, self.windowFlags())
+        if not self._restored:
+            self._restored = True
+            saved = settings.get(self.geometry_key)
+            if saved:
+                self.restoreGeometry(QByteArray.fromBase64(saved.encode("ascii")))
+        self.show()
+        self.raise_()
+
+    def save_state(self):
+        """Remember where the window is."""
+        settings.set(self.geometry_key, bytes(self.saveGeometry().toBase64()).decode("ascii"))
+
+    def hideEvent(self, event):
+        self.save_state()
+        super().hideEvent(event)
+
+
+class PreviewWindow(FloatingWindow):
+    geometry_key = "preview_geometry"
+
+    def __init__(self):
+        super().__init__()
         self.setWindowTitle("NovelAI preview")
         # Opening it must not take the keyboard away from a prompt box.
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
         self.resize(520, 720)
-        self._restored = False
 
         self.view = ImageView()
 
@@ -148,26 +180,7 @@ class PreviewWindow(QWidget):
         layout.addWidget(self.status)
         layout.addWidget(self.history)
 
-    def open(self, owner=None):
-        """Show the window, kept above ``owner`` (Krita's main window)."""
-        if owner is not None and self.parent() is None:
-            self.setParent(owner, self.windowFlags())
-        if not self._restored:
-            self._restored = True
-            saved = settings.get("preview_geometry")
-            if saved:
-                self.restoreGeometry(QByteArray.fromBase64(saved.encode("ascii")))
-        self.show()
-        self.raise_()
-
     def set_busy(self, busy):
         self.generate_button.setEnabled(not busy)
         self.cancel_button.setVisible(busy)
         self.progress.setVisible(busy)
-
-    def save_geometry(self):
-        settings.set("preview_geometry", bytes(self.saveGeometry().toBase64()).decode("ascii"))
-
-    def hideEvent(self, event):
-        self.save_geometry()
-        super().hideEvent(event)

@@ -640,7 +640,7 @@ class NovelAIDocker(DockWidget):
                 settings.set(key, value)
         settings.set("show_advanced", self.advanced_toggle.isChecked())
         if self.preview.isVisible():
-            self.preview.save_geometry()
+            self.preview.save_state()
         if self.tools is not None and self.tools.isVisible():
             self.tools.save_state()
 

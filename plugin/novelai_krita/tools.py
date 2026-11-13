@@ -18,14 +18,13 @@ import time
 
 from . import api, canvas, settings
 from .import_dialog import MAX_FILE_SIZE
-from .preview import ImageView
+from .preview import FloatingWindow, ImageView
 from .prompt_edit import IMAGE_EXTENSIONS, PromptEdit, dropped_image_file
 from .references import read_picture
 from .settings_dialog import max_pixels
 from .qt import (
-    QApplication, QButtonGroup, QByteArray, QEventLoop, QFileDialog, QHBoxLayout, QImage,
-    QKeySequence, QLabel, QProgressBar, QPushButton, Qt, QTimer, QToolButton, QVBoxLayout,
-    QWidget,
+    QApplication, QButtonGroup, QEventLoop, QFileDialog, QHBoxLayout, QImage, QKeySequence,
+    QLabel, QProgressBar, QPushButton, Qt, QTimer, QToolButton, QVBoxLayout, QWidget,
 )
 
 _RGBA = QImage.Format.Format_RGBA8888
@@ -56,17 +55,18 @@ SAVE_TIP = ("Save the result shown as an image file: the picture exactly as Nove
             "time: choose Masked, Generated or Blend first.")
 
 
-class ToolsWindow(QWidget):
+class ToolsWindow(FloatingWindow):
+    geometry_key = "tools_geometry"
+
     def __init__(self, client, host):
         """``host`` is the docker: it knows the account, keeps the results
         and puts them into documents."""
-        super().__init__(None, Qt.WindowType.Tool)
+        super().__init__()
         self.setWindowTitle("NovelAI director tools")
         self.setAcceptDrops(True)
         self.resize(940, 640)
         self._client = client
         self._host = host
-        self._restored = False
         self._job = None
         self._started = 0.0
         self._source = None  # The picture, as it was read (RGBA).
@@ -161,7 +161,7 @@ class ToolsWindow(QWidget):
             self._tools.addButton(button)
             tools.addWidget(button)
         tools.addStretch(1)
-        self._tools.buttonClicked.connect(self._tool_chosen)
+        self._tools.buttonClicked.connect(lambda *_: self.refresh())
 
         # Colorize's own settings.
         self._defry = QButtonGroup(self)
@@ -238,27 +238,15 @@ class ToolsWindow(QWidget):
     # ---- The window ----------------------------------------------------------
 
     def open(self, owner=None):
-        """Show the window, kept above ``owner`` (Krita's main window)."""
-        if owner is not None and self.parent() is None:
-            self.setParent(owner, self.windowFlags())
-        if not self._restored:
-            self._restored = True
-            saved = settings.get("tools_geometry")
-            if saved:
-                self.restoreGeometry(QByteArray.fromBase64(saved.encode("ascii")))
-        self.show()
-        self.raise_()
-        self.activateWindow()
+        super().open(owner)
+        self.activateWindow()  # So that Ctrl+V pastes a picture into it.
         self.refresh()
 
     def save_state(self):
-        settings.set("tools_geometry", bytes(self.saveGeometry().toBase64()).decode("ascii"))
+        """Remember where the window is, and the tool and defry chosen."""
+        super().save_state()
         settings.set("tool", self._tool())
         settings.set("tool_defry", self._defry.checkedId())
-
-    def hideEvent(self, event):
-        self.save_state()
-        super().hideEvent(event)
 
     def _say(self, text):
         self.status.setText(text)
@@ -266,9 +254,6 @@ class ToolsWindow(QWidget):
     def _tool(self):
         button = self._tools.checkedButton()
         return button.property("tool") if button is not None else settings.DEFAULTS["tool"]
-
-    def _tool_chosen(self, *_):
-        self.refresh()
 
     def _sent_size(self):
         return api.tool_size(self._source.width(), self._source.height(), max_pixels())

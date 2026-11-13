@@ -64,6 +64,12 @@ FREE_MAX_IMAGES = 1
 MAX_SEED = 2**32 - 1
 
 
+def free_on_plan(account: "Optional[Account]") -> bool:
+    """Whether the plan generates for free within the Opus limits. An account
+    that isn't loaded yet, or whose plan can't be read, is taken to be Opus."""
+    return account is None or account.tier is None or account.is_opus
+
+
 def anlas_warnings(width: int, height: int, steps: int, n_samples: int,
                    model: str = "", account: "Optional[Account]" = None,
                    references: int = 0) -> List[str]:
@@ -72,7 +78,7 @@ def anlas_warnings(width: int, height: int, steps: int, n_samples: int,
     Without ``account`` (not loaded yet) an Opus plan is assumed.
     ``references``: how many precise references are sent.
     """
-    if account is not None and account.tier is not None and not account.is_opus:
+    if not free_on_plan(account):
         return ["free generations need an Opus plan (yours: %s)" % account.plan_name]
     reasons = []
     if (account is not None and is_v5(model)
@@ -770,8 +776,7 @@ def tool_price(tool: str, width: int, height: int,
         return None
     if tool == REMOVE_BG:
         return 3 * price + 5
-    opus = account is None or (account.active and (account.tier or 0) >= OPUS_TIER)
-    return 0 if opus and pixels <= FREE_MAX_PIXELS else price
+    return 0 if free_on_plan(account) and pixels <= FREE_MAX_PIXELS else price
 
 
 def tool_cost(tool: str, width: int, height: int,
@@ -781,10 +786,9 @@ def tool_cost(tool: str, width: int, height: int,
     price = tool_price(tool, width, height, account)
     if not price:
         return ""
-    opus = account is None or (account.active and (account.tier or 0) >= OPUS_TIER)
     if tool == REMOVE_BG:
         reason = "%s is never free" % tool_name(tool)
-    elif not opus:
+    elif not free_on_plan(account):
         reason = "free tools need an Opus plan (yours: %s)" % account.plan_name
     else:
         reason = "%d x %d is larger than 1024 x 1024" % (width, height)

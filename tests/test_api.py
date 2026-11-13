@@ -593,6 +593,11 @@ def test_tool_cost_says_why():
         "20 Anlas: free tools need an Opus plan (yours: Scroll)")
     assert api.tool_cost("colorize", 1536, 1536) == (
         "45 Anlas: 1536 x 1536 is larger than 1024 x 1024")
+    # A plan that couldn't be read is taken to be Opus, as it is for generating.
+    unread = api.Account()
+    assert api.anlas_warnings(1024, 1024, 28, 1, "nai-diffusion-4-5-full", unread) == []
+    assert api.tool_price("lineart", 1024, 1024, unread) == 0
+    assert api.tool_cost("lineart", 1024, 1024, unread) == ""
 
 
 def test_same_shape_allows_for_rounding():

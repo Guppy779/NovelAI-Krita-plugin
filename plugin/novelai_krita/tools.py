@@ -51,6 +51,9 @@ RESIZE_TIP = ("Enlarge the whole current document to the result's size, layers i
               "canvas and has its shape, such as the canvas upscaled.")
 DOCUMENT_TIP = "Open the result as a new document."
 SOURCE_TIP = "Use the result as the picture, to run another tool on it."
+SAVE_TIP = ("Save the result shown as an image file: the picture exactly as NovelAI\n"
+            "sent it, at its own size. Remove BG's three pictures are saved one at a\n"
+            "time: choose Masked, Generated or Blend first.")
 
 
 class ToolsWindow(QWidget):
@@ -120,8 +123,11 @@ class ToolsWindow(QWidget):
         self.reuse_button = QPushButton("Use as picture")
         self.reuse_button.setToolTip(SOURCE_TIP)
         self.reuse_button.clicked.connect(self.use_result)
+        self.save_button = QPushButton("Save...")
+        self.save_button.setToolTip(SAVE_TIP)
+        self.save_button.clicked.connect(self.save_result)
         self._result_buttons = (self.add_button, self.resize_button, self.document_button,
-                                self.reuse_button)
+                                self.reuse_button, self.save_button)
         row = QHBoxLayout()
         for button in self._result_buttons:
             button.setEnabled(False)
@@ -546,6 +552,7 @@ class ToolsWindow(QWidget):
         for button in self._choice_buttons:
             self._choices.removeButton(button)
             self.choice_row.removeWidget(button)
+            button.hide()  # At once: it is only deleted later.
             button.deleteLater()
         self._choice_buttons = []
         for index, name in enumerate(names):
@@ -571,6 +578,14 @@ class ToolsWindow(QWidget):
         self.result_label.setText("%s, %d x %d" % (result.label, image.width(), image.height()))
         for button in self._result_buttons:
             button.setEnabled(True)
+
+    def save_result(self):
+        result = self._shown()
+        if result is None:
+            return
+        text = self._host.save_result(result, self)
+        if text:  # Nothing to say if the file dialog was closed.
+            self._say(text)
 
     def _place(self, action):
         """Run one of the docker's ways of putting the shown result somewhere."""

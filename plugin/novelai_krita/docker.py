@@ -997,7 +997,14 @@ class NovelAIDocker(DockWidget):
         self._say("History cleared.")
 
     def _save(self, result):
-        """Save NovelAI's original file, which keeps its embedded prompt info."""
+        text = self.save_result(result)
+        if text:
+            self._say(text)
+
+    def save_result(self, result, parent=None):
+        """Save NovelAI's original file, which keeps its embedded prompt info.
+        Asks where, above ``parent``. Returns what to tell the user: nothing
+        if they changed their mind."""
         is_webp = result.original[:4] == b"RIFF"
         extension = "webp" if is_webp else "png"
         folder = settings.get("save_dir") or os.path.join(os.path.expanduser("~"), "Pictures")
@@ -1008,18 +1015,17 @@ class NovelAIDocker(DockWidget):
             suggested = "novelai_%d.%s" % (result.seed, extension)
         suggested = os.path.join(folder, suggested)
         path, _ = QFileDialog.getSaveFileName(
-            self, "Save generated image", suggested,
+            parent or self, "Save generated image", suggested,
             "WebP image (*.webp)" if is_webp else "PNG image (*.png)")
         if not path:
-            return
+            return ""
         try:
             with open(path, "wb") as file:
                 file.write(result.original)
         except OSError as exc:
-            self._say("Could not save the image: %s" % exc)
-            return
+            return "Could not save the image: %s" % exc
         settings.set("save_dir", os.path.dirname(path))
-        self._say("Saved %s" % path)
+        return "Saved %s" % path
 
     def _insert(self, result):
         self._say(self.insert_result(result))

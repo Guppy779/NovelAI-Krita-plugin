@@ -146,3 +146,37 @@ def test_another_canvas_is_flattened_onto_white_as_it_is():
     doc = Document(as_image(bytes([0, 0, 0, 254]) * 256, 16, 16))
     read = canvas.read_image(doc, canvas.Region(0, 0, 16, 16))
     assert read.pixelColor(3, 3) == QColor(1, 1, 1)
+
+
+def see_through(width, height):
+    """A made-up picture with clear, half clear and solid parts."""
+    data = bytearray(made_up(width, height))
+    data[3::4] = bytes((0, 128, 255)[index % 3] for index in range(width * height))
+    return bytes(data)
+
+
+def test_a_tool_gets_the_canvas_with_its_transparency():
+    data = see_through(8, 6)
+    read = canvas.read_picture(Document(as_image(data, 8, 6)))
+    assert read.hasAlphaChannel()
+    assert rgba(read) == data  # Nothing is put behind it, unlike image to image.
+
+
+def test_a_tool_gets_a_novelai_image_with_its_hidden_data():
+    # The site sends a tool the picture as it is.
+    data = with_hidden_data(16, 16)
+    assert rgba(canvas.read_picture(Document(as_image(data, 16, 16)))) == data
+
+
+def test_a_tools_picture_is_scaled_as_the_site_does(monkeypatch):
+    monkeypatch.setattr(canvas, "sharp_resize", krita_must_not_scale)
+    data = see_through(8, 6)
+    sent = canvas.tool_picture(as_image(data, 8, 6), 16, 12)
+    assert (sent.width(), sent.height()) == (16, 12)
+    assert sent.hasAlphaChannel()
+    assert rgba(sent) == scaling.resize(data, 8, 6, 16, 12)
+
+
+def test_a_tools_picture_at_its_own_size_is_sent_as_it_is():
+    data = see_through(8, 6)
+    assert rgba(canvas.tool_picture(as_image(data, 8, 6), 8, 6)) == data

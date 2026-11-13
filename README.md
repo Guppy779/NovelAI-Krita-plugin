@@ -25,6 +25,8 @@ or Anlatan.
   placed where the AI chooses or at positions you pick.
 - **Precise reference** (V4.5): give NovelAI a picture to take a character, a style or both
   from, with the site's Strength and Fidelity sliders.
+- **Director tools**: Remove BG, Line Art, Sketch, Colorize and Upscale, for your canvas or
+  any picture, in a window of their own.
 - **Import from an image**: drop a NovelAI image on a prompt box to reuse its prompt,
   undesired content, characters, settings or seed.
 - **Your account at a glance**: your plan, Anlas and remaining V5 allowance.
@@ -238,6 +240,61 @@ Things to know:
 NovelAI's [Precise Reference guide](https://docs.novelai.net/en/image/precisereference) has
 tips on what makes a good reference picture.
 
+### Director tools
+
+Click **Director tools...** at the bottom of the panel. A window opens with your picture on
+the left and the result on the right, like the Director Tools page of the NovelAI site. It
+stays open next to Krita while you work.
+
+**The picture** can be:
+
+- **From canvas:** what is visible on the canvas. It is read again each time you run a tool,
+  so the tool works on the canvas as it is at that moment.
+- **From file...:** any PNG, JPEG or WebP file. You can also drop a file on the window.
+- **Pasted:** press Ctrl+V in the window to use a picture from the clipboard.
+
+**The tools:**
+
+| Tool | What it does |
+|------|--------------|
+| Remove BG | Removes the background. NovelAI answers with three pictures: **Masked** (your picture, cut out), **Generated** (redrawn without the background) and **Blend** (a mix of both). Choose which one to look at above the result. |
+| Line Art | Turns the picture into line art. |
+| Sketch | Turns the picture into a sketch. |
+| Colorize | Colours line art, or recolours a picture. **Defry** (0 to 5) tones down noise and colours that come out too strong. The prompt is optional: use it to say what you want, for example `red hair, blue eyes`. |
+
+Choose a tool and click **Transform**. **Upscale** enlarges the picture with NovelAI's
+upscaler. It takes pictures up to 1024 × 1024 in area and sends them as they are.
+
+**The result** can go several ways:
+
+- **Add as layer:** adds it to the current document. A result made from the canvas is fitted
+  to the canvas. Any other result, an upscaled one included, goes in at its own size, centred.
+- **Resize canvas to it:** enlarges the whole document to the result's size, layers
+  included, then adds the result on top. It is for a result that is larger than the canvas
+  and has its shape, such as the canvas upscaled. It never makes a document smaller.
+- **New document:** opens the result as a document of its own.
+- **Use as picture:** makes the result the picture, to run another tool on it, for example
+  Line Art and then Colorize.
+- **Save...:** saves the result as the file NovelAI sent.
+
+Every result also goes into the history of the preview window.
+
+Things to know:
+
+- **Size:** a picture goes to a tool the way the NovelAI site sends it. A small picture is
+  enlarged to about one megapixel first, and the result comes back at that size. A picture
+  above **Settings → Max generation size** is made smaller first, as for generating.
+- **Transparency:** clear parts of the picture are sent as clear, not as white.
+- **Cost:** Line Art, Sketch and Colorize are free on Opus for a picture of up to 1024 × 1024
+  in area, and cost about 20 Anlas at that size on other plans. Remove BG is never free: 65
+  Anlas at that size. Upscale costs 1 Anlas. The note next to the buttons shows the price
+  before you click.
+- **Remembered:** the window keeps the tool and defry you used last. The Colorize prompt
+  isn't kept after Krita closes.
+
+NovelAI's [Director Tools guide](https://docs.novelai.net/en/image/directortools) has more
+about what each tool is good for.
+
 ### Import from an image
 
 Drag an image made with NovelAI from your file browser onto either prompt box. A dialog
@@ -281,6 +338,9 @@ mode text and says why. Possible reasons:
 
 To keep generating for free on Opus, keep **Settings → Max generation size** at 1024.
 
+The director tools have their own note, in their window. Remove BG and Upscale always cost
+Anlas; see [Director tools](#director-tools).
+
 ### History
 
 Each result is kept in the history at the bottom of the preview window. Click one to see it
@@ -290,8 +350,9 @@ large. The **Preview** button next to **Generate** reopens the window if you've 
   the settings NovelAI hides in an image's transparency, so that image to image and
   inpainting get exactly its colours, as on the site.
 - **Right-click** a result to:
+  - open it as a new document
   - save it to disk, as the original PNG NovelAI sent, with the prompt and settings embedded
-  - reuse its seed or prompt
+  - reuse its seed or prompt (a director tool's result has neither)
   - remove it from the history
 - **Right-click → Clear history** empties the history. Layers you already added stay.
 
@@ -305,7 +366,7 @@ Click **Settings** in the panel:
 | Setting | Default | What it does |
 |---------|---------|--------------|
 | API token | — | Your NovelAI Persistent API Token. **Test** checks it. |
-| Max generation size | 1024 px | Generations are sized to about this many pixels squared. Above 1024 costs Anlas. |
+| Max generation size | 1024 px | Generations are sized to about this many pixels squared, and pictures for the director tools are kept within it. Above 1024 costs Anlas. |
 | Autocomplete | on | Suggest tags while you type. |
 | Inpainting: Add the whole image as the layer | off | Use NovelAI's whole image as the layer instead of only the inpainted area. |
 | Live preview | on | Show each step in the preview window while generating (V4 and newer). |
@@ -321,7 +382,12 @@ Click **Settings** in the panel:
 - The plugin talks only to `image.novelai.net`. It sends your prompts, and when you refine or
   inpaint, the part of the canvas being worked on. Precise reference pictures are sent with
   each generation that uses them, and aren't stored anywhere by the plugin.
-- The plugin does not save results to disk on its own. Only **Save image…** writes a file.
+- A director tool or Upscale sends the picture in its window when you run it: the canvas, or
+  the file or pasted picture you chose. Colorize sends its prompt too. The plugin doesn't
+  store the picture or that prompt. `kritarc` keeps the tool and defry you used last, and
+  the folder you last opened a picture from.
+- The plugin does not save results to disk on its own. Only **Save image…** and the tools
+  window's **Save...** write a file.
 - **Import from an image** reads the image on your computer. Nothing from it is sent anywhere.
 
 ## Troubleshooting
@@ -346,7 +412,7 @@ Bug reports and ideas are welcome in
 
 - Vibe transfer
 - Precise reference for V5, once NovelAI supports it
-- Director tools and upscaling
+- The other director tools: Emotion, Declutter and Pixel Snap
 
 ## Development
 
@@ -367,6 +433,7 @@ plugin/
     metadata.py             Reading NovelAI's prompt and settings from images (plain Python, tested)
     import_dialog.py        The Import from image dialog
     preview.py              The preview window and result history
+    tools.py                The director tools window
     prompt_edit.py          Prompt box with tag autocomplete popup
     tags.py                 Finding the tag at the cursor (plain Python, tested)
     weights.py              Where a prompt is weighted, for colouring it (plain Python, tested)

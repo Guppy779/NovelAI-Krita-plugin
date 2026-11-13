@@ -3,7 +3,8 @@
 <head><meta charset="utf-8"><title>NovelAI Image Generation</title></head>
 <body>
 <h3>NovelAI Image Generation</h3>
-<p>Generate, refine and inpaint images with NovelAI from a Krita docker.</p>
+<p>Generate, refine and inpaint images with NovelAI from a Krita docker, and use
+NovelAI's director tools on your canvas or any picture.</p>
 <h4>Setup</h4>
 <ol>
   <li>Open <b>Settings &rarr; Dockers &rarr; NovelAI</b>.</li>
@@ -65,6 +66,31 @@ are greyed out and aren't sent.</p>
   <li>Each open document has its own references. They last until you remove them, or
       close the document or Krita: they aren't saved in the <i>.kra</i>, to keep your
       files small.</li>
+</ul>
+<h4>Director tools</h4>
+<p><b>Director tools...</b> at the bottom of the docker opens a window with your picture on
+the left and the result on the right, like the Director Tools page of the NovelAI site.</p>
+<ul>
+  <li>The picture: <b>From canvas</b> (what is visible, read again each time a tool is
+      run), <b>From file...</b>, an image file dropped on the window, or a picture pasted
+      with Ctrl+V.</li>
+  <li><b>Remove BG</b> removes the background and answers with three pictures:
+      <i>Masked</i>, <i>Generated</i> and <i>Blend</i>. <b>Line Art</b> and <b>Sketch</b>
+      turn the picture into line art or a sketch. <b>Colorize</b> colours it; <b>Defry</b>
+      tones down colours that come out too strong, and the prompt is optional.
+      <b>Transform</b> runs the chosen tool.</li>
+  <li><b>Upscale</b> enlarges a picture of up to 1024 x 1024 pixels in area.</li>
+  <li>The result: <b>Add as layer</b> (a result made from the canvas is fitted to it; any
+      other goes in at its own size, centred), <b>Resize canvas to it</b> (enlarges the
+      whole document to a larger result of the same shape, then adds it), <b>New
+      document</b>, <b>Use as picture</b> (to run another tool on it) and <b>Save...</b>.
+      Results also go into the history.</li>
+  <li>A picture is sent the way the NovelAI site sends it: a small one is enlarged to
+      about one megapixel first, and clear parts stay clear. One above Max generation
+      size is made smaller first.</li>
+  <li>Line Art, Sketch and Colorize are free on Opus up to 1024 x 1024 pixels in area.
+      Remove BG always costs Anlas (65 at that size), and Upscale costs 1. The note
+      next to the buttons shows the price.</li>
 </ul>
 <h4>Anlas and V5 allowance</h4>
 <p>The line under the model shows your plan, your Anlas and, on Opus, how much of
@@ -142,8 +168,8 @@ the NovelAI site. To get NovelAI's whole image as the layer instead, turn on
 everything below it).</p>
 <p>Every result is kept in the history at the bottom of the preview window. Click a
 thumbnail to see it large, or double-click to add it as a new layer above the active layer.
-Right-click it to save it to disk, reuse its seed or prompt, or remove it from
-the history. Saving writes the file exactly as NovelAI sent it, including the
+Right-click it to open it as a new document, save it to disk, reuse its seed or
+prompt, or remove it from the history. Saving writes the file exactly as NovelAI sent it, including the
 prompt and settings NovelAI embeds in the PNG.</p>
 <p>The history is kept in memory only and is cleared when Krita closes. It keeps
 the newest 50 results (change it in Settings &rarr; History size). Right-click &rarr;

@@ -55,6 +55,22 @@ def read_picture(path):
     return reader.read()
 
 
+def open_picture(path):
+    """Read an image file the user chose or dropped: (the image, "") or
+    (None, why it couldn't be read, to tell them)."""
+    name = os.path.basename(path)
+    try:
+        too_large = os.path.getsize(path) > MAX_FILE_SIZE
+    except OSError as exc:
+        return None, "Could not read %s: %s." % (name, exc.strerror or exc)
+    if too_large:
+        return None, "%s is too large (over %d MB)." % (name, MAX_FILE_SIZE // (1024 * 1024))
+    image = read_picture(path)
+    if image.isNull() or image.width() < 1 or image.height() < 1:
+        return None, "Could not read %s as an image." % name
+    return image, ""
+
+
 def prepare(image):
     """``image`` as a reference: (the PNG that is sent, as base64; its size;
     the picture in it, to show).
@@ -316,21 +332,11 @@ class ReferenceEditor(QWidget):
         return True
 
     def add_file(self, path):
-        name = os.path.basename(path)
-        try:
-            too_large = os.path.getsize(path) > MAX_FILE_SIZE
-        except OSError as exc:
-            self._say("Could not read %s: %s." % (name, exc.strerror or exc))
-            return
-        if too_large:
-            self._say("%s is too large for a reference (over %d MB)."
-                      % (name, MAX_FILE_SIZE // (1024 * 1024)))
-            return
-        if not self.add_image(read_picture(path)):
-            if len(self._cards) < api.MAX_REFERENCES:
-                self._say("Could not read %s as an image." % name)
-            return
-        self._say("Added %s as a precise reference." % name)
+        image, problem = open_picture(path)
+        if problem:
+            self._say(problem)
+        elif self.add_image(image):  # It says so itself if there are too many.
+            self._say("Added %s as a precise reference." % os.path.basename(path))
 
     def choose_file(self):
         folder = settings.get("reference_dir") or os.path.join(

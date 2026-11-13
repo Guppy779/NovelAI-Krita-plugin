@@ -17,10 +17,9 @@ import os
 import time
 
 from . import api, canvas, settings
-from .import_dialog import MAX_FILE_SIZE
 from .preview import FloatingWindow, ImageView
 from .prompt_edit import IMAGE_EXTENSIONS, PromptEdit, dropped_image_file
-from .references import read_picture
+from .references import open_picture
 from .settings_dialog import max_pixels
 from .qt import (
     QApplication, QButtonGroup, QEventLoop, QFileDialog, QHBoxLayout, QImage, QKeySequence,
@@ -319,18 +318,15 @@ class ToolsWindow(FloatingWindow):
 
     def use_file(self, path):
         name = os.path.basename(path)
-        try:
-            if os.path.getsize(path) > MAX_FILE_SIZE:
-                self._say("%s is too large (over %d MB)." % (name, MAX_FILE_SIZE // (1024 * 1024)))
-                return
+        image, problem = open_picture(path)
+        if problem:
+            self._say(problem)
+            return
+        try:  # The file as it is, too: that is what the upscaler is sent.
             with open(path, "rb") as file:
                 data = file.read()
         except OSError as exc:
             self._say("Could not read %s: %s." % (name, exc.strerror or exc))
-            return
-        image = read_picture(path)
-        if image.isNull() or image.width() < 1 or image.height() < 1:
-            self._say("Could not read %s as an image." % name)
             return
         self._set_source(image, name, file=data)
         self._say("")

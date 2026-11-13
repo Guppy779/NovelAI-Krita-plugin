@@ -19,7 +19,7 @@ import time
 from . import api, canvas, settings
 from .import_dialog import MAX_FILE_SIZE
 from .preview import ImageView
-from .prompt_edit import IMAGE_EXTENSIONS, PromptEdit
+from .prompt_edit import IMAGE_EXTENSIONS, PromptEdit, dropped_image_file
 from .references import read_picture
 from .settings_dialog import max_pixels
 from .qt import (
@@ -386,37 +386,33 @@ class ToolsWindow(QWidget):
         super().keyPressEvent(event)
 
     @staticmethod
-    def _dropped(event):
-        """The image file being dragged, or the picture itself, or None."""
-        mime = event.mimeData()
-        if mime.hasUrls():
-            for url in mime.urls():
-                path = url.toLocalFile() if url.isLocalFile() else ""
-                if os.path.splitext(path)[1].lower() in IMAGE_EXTENSIONS:
-                    return path
-        if mime.hasImage():
-            image = QImage(mime.imageData())
-            return None if image.isNull() else image
-        return None
+    def _can_drop(mime):
+        """Whether what is being dragged is an image file or a picture itself
+        (from a browser, say). Asked on every move, so nothing is read here."""
+        return bool(dropped_image_file(mime)) or mime.hasImage()
 
     def dragEnterEvent(self, event):
-        if self._dropped(event) is not None:
+        if self._can_drop(event.mimeData()):
             event.acceptProposedAction()
 
     def dragMoveEvent(self, event):
-        if self._dropped(event) is not None:
+        if self._can_drop(event.mimeData()):
             event.acceptProposedAction()
 
     def dropEvent(self, event):
-        dropped = self._dropped(event)
-        if dropped is None:
+        mime = event.mimeData()
+        path = dropped_image_file(mime)
+        image = None
+        if not path and mime.hasImage():
+            image = QImage(mime.imageData())
+        if not path and (image is None or image.isNull()):
             return
         event.acceptProposedAction()
         # After the drop has finished: the system's drag is still running here.
-        if isinstance(dropped, str):
-            QTimer.singleShot(0, lambda: self.use_file(dropped))
+        if path:
+            QTimer.singleShot(0, lambda: self.use_file(path))
         else:
-            QTimer.singleShot(0, lambda: self._set_source(dropped, "The dropped picture"))
+            QTimer.singleShot(0, lambda: self._set_source(image, "The dropped picture"))
 
     # ---- Running a tool ------------------------------------------------------
 

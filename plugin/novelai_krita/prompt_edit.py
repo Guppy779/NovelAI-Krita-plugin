@@ -30,6 +30,18 @@ _HIDE_KEYS = (Qt.Key.Key_Left, Qt.Key.Key_Right, Qt.Key.Key_Home, Qt.Key.Key_End
 
 IMAGE_EXTENSIONS = (".png", ".webp", ".jpg", ".jpeg")
 
+
+def dropped_image_file(mime):
+    """The path of the first image file among what is being dragged or
+    dropped (its QMimeData), or None."""
+    if not mime.hasUrls():
+        return None
+    for url in mime.urls():
+        path = url.toLocalFile() if url.isLocalFile() else ""
+        if os.path.splitext(path)[1].lower() in IMAGE_EXTENSIONS:
+            return path
+    return None
+
 # The NovelAI site's default dark theme.
 WEIGHT_COLORS = {weights.HIGH: "#b83700", weights.MID: "#009707", weights.LOW: "#0466ce"}
 
@@ -143,14 +155,9 @@ class PromptEdit(QPlainTextEdit):
 
     def _dropped_image(self, event):
         """The path of the image file being dragged, or None."""
-        mime = event.mimeData()
-        if self._on_image is None or not mime.hasUrls():
+        if self._on_image is None:
             return None
-        for url in mime.urls():
-            path = url.toLocalFile() if url.isLocalFile() else ""
-            if os.path.splitext(path)[1].lower() in IMAGE_EXTENSIONS:
-                return path
-        return None
+        return dropped_image_file(event.mimeData())
 
     def dragEnterEvent(self, event):
         if self._dropped_image(event):

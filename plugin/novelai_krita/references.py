@@ -15,7 +15,7 @@ import os
 
 from . import api, canvas, scaling, settings
 from .import_dialog import MAX_FILE_SIZE
-from .prompt_edit import IMAGE_EXTENSIONS
+from .prompt_edit import IMAGE_EXTENSIONS, dropped_image_file
 from .qt import (
     QApplication, QCheckBox, QColor, QComboBox, QDoubleSpinBox, QEventLoop, QFileDialog, QFrame,
     QHBoxLayout, QImage, QImageReader, QLabel, QMenu, QPainter, QPixmap, QSlider, Qt, QTimer,
@@ -361,27 +361,16 @@ class ReferenceEditor(QWidget):
 
     # ---- Dropped image files -------------------------------------------------
 
-    @staticmethod
-    def _dropped_image(event):
-        mime = event.mimeData()
-        if not mime.hasUrls():
-            return None
-        for url in mime.urls():
-            path = url.toLocalFile() if url.isLocalFile() else ""
-            if os.path.splitext(path)[1].lower() in IMAGE_EXTENSIONS:
-                return path
-        return None
-
     def dragEnterEvent(self, event):
-        if self._dropped_image(event):
+        if dropped_image_file(event.mimeData()):
             event.acceptProposedAction()
 
     def dragMoveEvent(self, event):
-        if self._dropped_image(event):
+        if dropped_image_file(event.mimeData()):
             event.acceptProposedAction()
 
     def dropEvent(self, event):
-        path = self._dropped_image(event)
+        path = dropped_image_file(event.mimeData())
         if path:
             event.acceptProposedAction()
             # After the drop has finished: the system's drag is still running here.

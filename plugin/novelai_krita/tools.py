@@ -180,7 +180,6 @@ class ToolsWindow(QWidget):
         self.prompt = PromptEdit("", self._suggest_tags, on_image=self.use_file)
         self.prompt.setPlaceholderText("Prompt (optional), e.g. red hair, blue eyes")
         self.prompt.setFixedHeight(52)
-        self.prompt.setTabChangesFocus(True)
         self.colorize = QWidget()
         row = QHBoxLayout(self.colorize)
         row.setContentsMargins(0, 0, 0, 0)

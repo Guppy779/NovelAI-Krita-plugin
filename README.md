@@ -1,9 +1,12 @@
 # NovelAI for Krita
 
-Generate, refine and inpaint images with [NovelAI](https://novelai.net) without leaving Krita.
-The plugin adds a panel (a docker), in the spirit of
-[Krita AI Diffusion](https://github.com/Acly/krita-ai-diffusion), that sends your prompt, and
-when needed your canvas, to NovelAI. Each result opens in a preview window, where you add the ones you like as layers.
+Generate, refine and inpaint images with [NovelAI](https://novelai.net) without leaving Krita,
+and use NovelAI's director tools on your canvas. The plugin adds a panel (a docker), in the
+spirit of [Krita AI Diffusion](https://github.com/Acly/krita-ai-diffusion), that sends your
+prompt, and when needed your canvas, to NovelAI. Each result opens in a preview window, where
+you add the ones you like as layers.
+
+![Krita with the NovelAI panel on the right, the preview window with a generated picture and its history, and the picture added to the canvas as a layer](docs/images/overview.png)
 
 This is an unofficial, community-made plugin. It isn't affiliated with or endorsed by NovelAI
 or Anlatan.
@@ -27,7 +30,7 @@ or Anlatan.
   from, with the site's Strength and Fidelity sliders.
 - **Director tools**: Remove BG, Line Art, Sketch, Colorize and Upscale, for your canvas or
   any picture, in a window of their own.
-- **Import from an image**: drop a NovelAI image on a prompt box to reuse its prompt,
+- **Import from an image**: drop a NovelAI image on any prompt box to reuse its prompt,
   undesired content, characters, settings or seed.
 - **Your account at a glance**: your plan, Anlas and remaining V5 allowance.
 - **A warning before you spend Anlas**, with the reason it would cost.
@@ -116,6 +119,8 @@ on the site. Clear parts of the canvas are sent as white.
 Click **Inpaint...** under the Strength slider. A window opens with a picture of your canvas.
 Scroll to zoom, and drag with the middle or right mouse button to move around.
 
+![The inpaint window: a face painted in blue, inside a focus rectangle whose red border is the minimum context](docs/images/inpaint.png)
+
 - **Brush** and **Eraser** paint the area to regenerate, in NovelAI's 8 x 8 pixel cells. If you
   had something selected in Krita, it is already painted in.
 - **Focus** works on part of the canvas at a higher resolution. Drag a rectangle (up to 768 x
@@ -128,8 +133,9 @@ Scroll to zoom, and drag with the middle or right mouse button to move around.
   does it.
 
 Click **Use mask**. The button changes to **Edit mask...**, a small picture of the mask appears
-next to it (click it to edit the mask too), and every **Generate** now inpaints that area, so you can keep trying with a different seed. It works with what's on the canvas when
-you click **Generate**. **Clear mask** goes back to generating the whole image. Masks last
+next to it (click it to edit the mask too), and every **Generate** now inpaints that area, so
+you can keep trying with a different seed. It works with what's on the canvas when you click
+**Generate**. **Clear mask** goes back to generating the whole image. Masks last
 until you clear them, switch document or change the canvas size, and aren't saved in the `.kra`.
 
 - Without Focus, the whole canvas is sent at its own size, as on the NovelAI site. A canvas
@@ -186,6 +192,8 @@ numbered dot for each character:
   the cell, for example **C3**: columns A to E from left to right, rows 1 to 5 from top to
   bottom. A position placed freely on V5 is kept, and V4 and V4.5 use its nearest cell.
 - An unticked character's dot has a dashed outline.
+
+![Two characters in the panel with custom positions, and the position canvas open with a numbered dot for each](docs/images/characters.png)
 
 V4 and V4.5 take up to 6 characters, V5 up to 22. V3 models have no character prompts.
 If the model doesn't take the ticked characters, a note says why and Generate stops.
@@ -246,6 +254,8 @@ Click **Director tools...** at the bottom of the panel. A window opens with your
 the left and the result on the right, like the Director Tools page of the NovelAI site. It
 stays open next to Krita while you work.
 
+![The director tools window: the canvas on the left, and on the right Remove BG's result with its background gone, with the Masked, Generated and Blend buttons above it](docs/images/director-tools.png)
+
 **The picture** can be:
 
 - **From canvas:** what is visible on the canvas. It is read again each time you run a tool,
@@ -297,7 +307,8 @@ about what each tool is good for.
 
 ### Import from an image
 
-Drag an image made with NovelAI from your file browser onto either prompt box. A dialog
+Drag an image made with NovelAI from your file browser onto any prompt box, a character's
+included. A dialog
 shows what the image contains. Tick what to import, then click **Import**:
 
 | Part | What it sets |
@@ -407,12 +418,6 @@ Click **Settings** in the panel:
 
 Bug reports and ideas are welcome in
 [Issues](https://github.com/Guppy779/NovelAI-Krita-plugin/issues).
-
-## Roadmap
-
-- Vibe transfer
-- Precise reference for V5, once NovelAI supports it
-- The other director tools: Emotion, Declutter and Pixel Snap
 
 ## Development
 

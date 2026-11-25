@@ -425,9 +425,10 @@ class ReferenceEditor(QWidget):
         self._loose = False  # Whether they changed while none was open.
         self._model = ""
         self._inpainting = False
+        self._generating = False
         self.setAcceptDrops(True)
         # Pictures are made for a newly chosen model a moment later, so that
-        # typing a model's name doesn't stop at each letter.
+        # going through the list of models doesn't stop at each.
         self._prepare_timer = QTimer(self)
         self._prepare_timer.setSingleShot(True)
         self._prepare_timer.setInterval(PREPARE_DELAY)
@@ -646,7 +647,19 @@ class ReferenceEditor(QWidget):
         """Make the pictures for the current model that aren't made yet: of
         every reference it takes, so that each shows what the model gets."""
         self._prepare_timer.stop()
-        self._prepare(self._taken())
+        if not self._generating:
+            self._prepare(self._taken())
+
+    def _prepare_later(self):
+        if not self._generating and self._unmade(self._taken()):
+            self._prepare_timer.start()
+
+    def set_generating(self, generating):
+        """Tell whether a generation is running. Pictures it wasn't sent wait
+        until it's done: making them would hold up its preview, and say so
+        over its progress."""
+        self._generating = bool(generating)
+        self._prepare_later()
 
     def set_model(self, model):
         if model != self._model:
@@ -679,5 +692,4 @@ class ReferenceEditor(QWidget):
             notes.append("That's as many references as NovelAI takes (%d)." % api.MAX_REFERENCES)
         self.note.setText("\n".join(notes))
         self.note.setVisible(bool(notes))
-        if self._unmade(self._taken()):
-            self._prepare_timer.start()  # They're made in a moment.
+        self._prepare_later()

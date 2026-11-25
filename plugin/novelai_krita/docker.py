@@ -515,6 +515,7 @@ class NovelAIDocker(DockWidget):
         self.cancel_button.setVisible(busy)
         self.progress.setVisible(busy)
         self.preview.set_busy(busy)
+        self.references.set_generating(busy)  # They make no pictures meanwhile.
 
     def _say(self, text):
         self.status.setText(text)

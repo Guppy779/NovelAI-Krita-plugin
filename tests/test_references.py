@@ -320,6 +320,26 @@ def test_the_pictures_are_made_for_v5_under_a_mask_too(made):
     assert made == ["fitted", "cut"] and "832 x 1216" in editor._cards[0].thumbnail.toolTip()
 
 
+def test_no_pictures_are_made_while_a_generation_runs(made):
+    editor = editor_for(V45)
+    editor.add_image(plain(8, 8))
+    editor.add_image(plain(8, 8))
+    editor._cards[1].enabled.setChecked(False)
+    editor.set_model(V5)
+    assert len(editor.for_request()) == 1  # What the generation is sent is made.
+    editor.set_generating(True)
+    said = list(editor.said)
+    editor.prepare_pictures()  # The timer, set off before it started.
+    editor.set_model(V45)
+    editor.set_model(V5)
+    assert not editor._prepare_timer.isActive()
+    assert made == ["fitted", "fitted", "cut"] and editor.said == said
+    editor.set_generating(False)
+    assert editor._prepare_timer.isActive()  # Now the other one follows.
+    editor.prepare_pictures()
+    assert made == ["fitted", "fitted", "cut", "cut"]
+
+
 def test_a_reference_the_model_cant_take_isnt_made_for_it(made):
     editor = editor_for(V5)
     editor.add_image(plain(8, 8))
@@ -372,8 +392,10 @@ def test_references_wait_greyed_out_with_a_model_that_takes_none(made):
     assert editor.used() == 0 and editor.for_request() == []
     assert "needs a V4.5 or V5 model" in editor.note.text()
     assert not card.kind.isEnabled() and not card.fidelity.isHidden()
+    assert not (card.enabled.isEnabled() or card.strength.isEnabled()
+                or card.fidelity.isEnabled() or card.thumbnail.isEnabled())
     editor.set_model(V5)
-    assert editor.used() == 1 and card.kind.isEnabled()
+    assert editor.used() == 1 and card.kind.isEnabled() and card.strength.isEnabled()
     assert editor.for_request()[0].strength == 2.5
 
 

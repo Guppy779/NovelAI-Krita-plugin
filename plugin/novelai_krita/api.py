@@ -404,6 +404,11 @@ def build_payload(p: GenerationParams) -> dict:
     action = p.action
     model = inpainting_model(p.model) if action == "infill" else p.model
     prompt = presets.apply_quality(model, p.prompt, p.quality)
+    if presets.has_auto_text(p.model):  # The selected model's, as on the site.
+        # After the quality tags: the text V5 is to draw, from the quotes.
+        prompt = presets.add_auto_text(prompt, [
+            (c.prompt,) + character_position(p.model, c.x, c.y)
+            for c in p.characters if c.enabled], p.use_coords)
     negative, uc_index = presets.apply_uc(model, p.prompt, p.negative_prompt, p.uc_preset)
 
     params = {

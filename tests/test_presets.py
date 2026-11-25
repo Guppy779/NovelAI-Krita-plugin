@@ -180,3 +180,61 @@ def test_v5_light_preset_and_v3_human_focus():
     negative, _ = presets.apply_uc("nai-diffusion-3", "x", "", "Human Focus")
     assert "[abstract], bad anatomy, bad hands, @_@" in negative
     assert negative.endswith("heart-shaped pupils, glowing eyes")
+
+
+# ---- Text to draw (V5) ---------------------------------------------------------
+# Expected values from the site's own functions, run on the same input.
+
+@pytest.mark.parametrize("prompt, sent", [
+    ('1girl, holding a sign, the sign says "HELLO"',
+     '1girl, holding a sign, the sign says "HELLO", teXt: HELLO'),
+    # After the quality tags, which come first.
+    ('1girl, "HELLO", very aesthetic, masterpiece, no text',
+     '1girl, "HELLO", very aesthetic, masterpiece, no text, teXt: HELLO'),
+    # Apostrophes aren't quotes; curly quotes are.
+    ("it's a sign saying 'don't stop' and \u201cWOW\u201d, \u2018ok\u2019",
+     "it's a sign saying 'don't stop' and \u201cWOW\u201d, \u2018ok\u2019, "
+     "teXt: don't stop\n\nWOW\n\nok"),
+    # Mostly Japanese: the other way round.
+    ("\u770b\u677f\u306b\u300c\u30db\u30c6\u30eb\u300d\u3068\u300c\u672c\u65e5\u300d",
+     "\u770b\u677f\u306b\u300c\u30db\u30c6\u30eb\u300d\u3068\u300c\u672c\u65e5\u300d, "
+     "teXt: \u672c\u65e5\n\n\u30db\u30c6\u30eb"),
+    ('"HELLO", ', '"HELLO", teXt: HELLO'),
+    ('a "X" | b "Y"', 'a "X", teXt: X| b "Y"'),  # The first part only.
+    # Nothing to draw: empty, blank or unclosed quotes.
+    ('"" and "  " and "open', '"" and "  " and "open'),
+    # Text to draw is given already.
+    ('a sign, Text: HI "THERE"', 'a sign, Text: HI "THERE"'),
+])
+def test_quoted_text_is_added_for_v5_to_draw(prompt, sent):
+    assert presets.add_auto_text(prompt) == sent
+
+
+def test_the_characters_quotes_follow_the_prompts():
+    characters = [('girl, says "TOP RIGHT"', 0.9, 0.1), ('boy, "TOP LEFT"', 0.1, 0.15),
+                  ('cat, "BOTTOM"', 0.5, 0.9)]
+    # In the order they're listed, or with positions given, row by row.
+    assert presets.add_auto_text('"A"', characters) == (
+        '"A", teXt: A\n\nTOP RIGHT\n\nTOP LEFT\n\nBOTTOM')
+    assert presets.add_auto_text('"A"', characters, use_coords=True) == (
+        '"A", teXt: A\n\nTOP LEFT\n\nTOP RIGHT\n\nBOTTOM')
+    # A character's "Text:" counts too, but not one that's in quotes.
+    assert presets.add_auto_text('"A"', [("girl, Text: B", 0.5, 0.5)]) == '"A"'
+    assert presets.add_auto_text('a sign "HI"', [('girl, "text: maybe"', 0.5, 0.5)]) == (
+        'a sign "HI", teXt: HI\n\ntext: maybe')
+
+
+def test_auto_text_is_taken_out_only_where_the_site_added_it():
+    sent = '1girl, "HELLO", very aesthetic, masterpiece, no text, teXt: HELLO'
+    assert presets.remove_auto_text(sent) == (
+        '1girl, "HELLO", very aesthetic, masterpiece, no text')
+    typed = '1girl, "HELLO", very aesthetic, masterpiece, no text, teXt: BYE'
+    assert presets.remove_auto_text(typed) == typed
+    characters = [('cat, "MEOW"', 0.5, 0.5)]
+    assert presets.remove_auto_text('"A", teXt: A\n\nMEOW', characters) == '"A"'
+    assert presets.remove_auto_text('"A", teXt: A\n\nMEOW') == '"A", teXt: A\n\nMEOW'
+
+
+def test_only_v5_has_auto_text():
+    assert [m for m in ALL_MODELS if presets.has_auto_text(m)] == [
+        "nai-diffusion-5-full", "nai-diffusion-5-curated"]

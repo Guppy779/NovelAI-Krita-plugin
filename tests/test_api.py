@@ -750,3 +750,31 @@ def test_upscale_follows_the_site():
     assert api.upscale_price(512, 768) == 1
     assert not api.can_upscale(1024, 1025) and api.upscale_price(1024, 1025) is None
     assert not api.can_upscale(0, 100) and api.upscale_price(0, 100) is None
+
+
+def test_v5_is_sent_the_quoted_text_to_draw():
+    def sent(**options):
+        payload = api.build_payload(api.GenerationParams(**options))
+        assert payload["parameters"]["v4_prompt"]["caption"]["base_caption"] == payload["input"]
+        return payload["input"]
+
+    assert sent(prompt='1girl, sign, "HELLO"', model="nai-diffusion-5-full", quality="off") == (
+        '1girl, sign, "HELLO", teXt: HELLO')
+    assert sent(prompt='1girl, sign, "HELLO"', model="nai-diffusion-5-curated") == (
+        '1girl, sign, "HELLO", very aesthetic, masterpiece, no text, teXt: HELLO')
+    # Not on V4.5, and a prompt that says what to draw is sent as typed.
+    assert sent(prompt='1girl, sign, "HELLO"', model="nai-diffusion-4-5-full",
+                quality="off") == '1girl, sign, "HELLO"'
+    assert sent(prompt='sign, "HI", Text: HELLO', model="nai-diffusion-5-full",
+                quality="off") == 'sign, "HI", Text: HELLO'
+    # The selected model decides: V5 Curated inpaints with V4.5's model.
+    assert sent(prompt='"HI"', model="nai-diffusion-5-curated", image="A", mask="B",
+                quality="off") == '"HI", teXt: HI'
+    # Characters that are switched on, row by row when placed.
+    people = [api.CharacterPrompt('girl, "RIGHT"', x=0.9, y=0.5),
+              api.CharacterPrompt('boy, "LEFT"', x=0.1, y=0.5),
+              api.CharacterPrompt('cat, "OFF"', x=0.5, y=0.5, enabled=False)]
+    assert sent(prompt="sign", model="nai-diffusion-5-full", quality="off",
+                characters=people) == "sign, teXt: RIGHT\n\nLEFT"
+    assert sent(prompt="sign", model="nai-diffusion-5-full", quality="off",
+                characters=people, use_coords=True) == "sign, teXt: LEFT\n\nRIGHT"

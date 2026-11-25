@@ -23,7 +23,7 @@ or Anlatan.
   English tags.
 - **Coloured prompt weights**, like the site: `{ }`, `[ ]` and `1.2::tag::` show at a glance.
 - **Quality tags and Undesired Content presets** for each model, applied the way the site
-  applies them.
+  applies them, and on V5 the text to draw taken from quotes in the prompt, as on the site.
 - **Character prompts** (V4 and newer): a prompt and undesired content for each character,
   placed where the AI chooses or at positions you pick.
 - **Precise reference** (V4.5 and V5): give NovelAI a picture to take a character, a style
@@ -151,6 +151,11 @@ until you clear them, switch document or change the canvas size, and aren't save
   the NovelAI site. They are added to the request but not shown in the text boxes. As on the
   site, with an undesired preset other than **None**, models that aren't Curated also get
   `nsfw` in the undesired content, unless your prompt contains it.
+- **Text in quotes (V5):** as on the site, what you put in quotes in the prompt or a
+  character prompt, such as `a sign that says "HELLO"`, is also added at the end of the
+  request as `teXt: HELLO`, for V5 to draw. Several pieces of text are all added. Nothing is
+  added if a prompt already has `Text:` in it, so write that yourself to say exactly what to
+  draw.
 - **Autocomplete** suggests tags for the word at the cursor, free of charge. Use Up and Down
   to choose, **Tab** or **Enter** to insert, and **Escape** to close the list. Italic
   suggestions are fuzzy matches.
@@ -343,7 +348,8 @@ NovelAI records the prompt as it was sent, with the quality tags at the end and 
 Undesired Content preset at the start. **Move quality tags and preset into their boxes**
 takes them out of the text and chooses them in the **Quality tags** and **Undesired
 preset** boxes instead, if the selected model has them. If it doesn't, they stay in the
-text so they're still sent. With the option off, the text is imported as recorded and
+text so they're still sent. On V5 it also takes out the `teXt: ...` the site added from the
+quotes, since it's added again. With the option off, the text is imported as recorded and
 both boxes are turned off.
 
 NovelAI stores the prompt in the PNG's text and again, hidden, in the image's
@@ -460,7 +466,8 @@ plugin/
     prompt_edit.py          Prompt box with tag autocomplete popup
     tags.py                 Finding the tag at the cursor (plain Python, tested)
     weights.py              Where a prompt is weighted, for colouring it (plain Python, tested)
-    presets.py              Quality tags and Undesired Content presets (plain Python, tested)
+    presets.py              Quality tags, Undesired Content presets and V5's text in quotes
+                            (plain Python, tested)
     scaling.py              Scaling a picture exactly as the site does (plain Python, tested)
     settings.py             Settings stored in kritarc
     settings_dialog.py      The Settings dialog

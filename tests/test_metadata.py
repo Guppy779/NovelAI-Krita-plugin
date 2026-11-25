@@ -360,3 +360,19 @@ def test_made_from_image():
     assert info({"request_type": "Img2ImgRequest", "strength": 0.65}).made_from_image
     assert not info({}).made_from_image  # Older images don't say.
     assert not info({"request_type": 3}).made_from_image
+
+
+def test_import_takes_out_the_text_the_site_added():
+    recorded = '1girl, sign, "HELLO", %s, teXt: HELLO' % QUALITY[2:]
+    info = metadata.ImageInfo(prompt=recorded)
+    state = metadata.import_state(info, PANEL, [metadata.PROMPT])
+    assert (state["prompt"], state["quality_tags"]) == ('1girl, sign, "HELLO"', presets.STANDARD)
+    # Generating again sends what was recorded.
+    assert api.build_payload(api.GenerationParams(
+        prompt=state["prompt"], model=V5, quality=state["quality_tags"]))["input"] == recorded
+    # Kept where it isn't added back: as recorded, or with a model without it.
+    state = metadata.import_state(info, PANEL, [metadata.PROMPT], clean=False)
+    assert state["prompt"] == recorded
+    state = metadata.import_state(info, dict(PANEL, model="nai-diffusion-4-5-full"),
+                                  [metadata.PROMPT])
+    assert state["prompt"] == '1girl, sign, "HELLO", %s, teXt: HELLO' % QUALITY[2:]

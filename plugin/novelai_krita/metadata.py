@@ -301,7 +301,8 @@ def import_state(info: ImageInfo, state: dict, parts, clean: bool = True,
 
     ``clean`` moves NovelAI's quality tags and Undesired Content preset out of
     the text into their boxes, if the state's model has them; otherwise the
-    text is kept as recorded and the boxes are turned off.
+    text is kept as recorded and the boxes are turned off. On V5 it also takes
+    out the "teXt: ..." the site added from the quotes, which is added again.
     ``append`` adds the image's characters after the current ones instead of
     replacing them.
     """
@@ -310,8 +311,12 @@ def import_state(info: ImageInfo, state: dict, parts, clean: bool = True,
         state.update(info.settings)
     model = state.get("model", "")
     if PROMPT in parts:
-        prompt, quality = (split_quality(info.prompt, model) if clean
-                           else (info.prompt, presets.OFF))
+        prompt = info.prompt
+        if clean and presets.has_auto_text(model):  # It's added back when generating.
+            prompt = presets.remove_auto_text(prompt, [
+                (c.prompt, c.x, c.y) for c in info.characters], bool(info.use_coords))
+        prompt, quality = (split_quality(prompt, model) if clean
+                           else (prompt, presets.OFF))
         state["prompt"], state["quality_tags"] = prompt, quality
     if NEGATIVE in parts:
         negative, preset = (split_uc(info.negative, model) if clean

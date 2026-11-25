@@ -28,6 +28,10 @@ to the request but not shown in the text boxes.</p>
 </ul>
 <p>Like the site, with a preset other than <i>None</i>, models that aren't Curated also
 get <i>nsfw</i> in the undesired content, unless your prompt includes it.</p>
+<p><b>Text in quotes (V5):</b> as on the site, text in quotes in the prompt or a
+character prompt (<i>a sign that says "HELLO"</i>) is also added to the end of the
+request as <i>teXt: HELLO</i>, for V5 to draw. Nothing is added if a prompt already
+has <i>Text:</i> in it.</p>
 <h4>Characters</h4>
 <p>With V4 and newer models, each character can have its own prompt and undesired
 content, so traits don't leak between characters. Put the scene and the number of
@@ -141,8 +145,9 @@ guidance, guidance rescale, sampler, noise schedule) and <b>seed</b>.</p>
   <li><b>Move quality tags and preset into their boxes</b> takes NovelAI's quality
       tags and Undesired Content preset out of the imported text and chooses them in
       the Quality tags and Undesired preset boxes, if the selected model has them.
-      If it doesn't, they stay in the text so they're still sent. Turned off, the text
-      is imported as recorded and both boxes are turned off.</li>
+      If it doesn't, they stay in the text so they're still sent. On V5 it also takes
+      out the <i>teXt: ...</i> the site added from quotes. Turned off, the text is
+      imported as recorded and both boxes are turned off.</li>
 </ul>
 <p>The prompt is read from the PNG's text, or from the copy NovelAI hides in the
 image's transparency, which survives some programs that remove the text. JPEGs

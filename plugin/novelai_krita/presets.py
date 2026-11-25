@@ -11,6 +11,7 @@ Nothing the user typed is trimmed, as the site doesn't. Plain Python, no Qt.
 """
 
 import re
+import unicodedata
 from typing import List, Optional, Tuple
 
 # ---- Models ----------------------------------------------------------------
@@ -72,8 +73,12 @@ def quality_options(model: str) -> List[Tuple[str, str]]:
     return [(STANDARD, "On"), (OFF, "Off")]
 
 
+# What JavaScript counts as white space (its \s and trim()), which isn't quite
+# what Python does.
+_SPACE = ("\t\n\x0b\x0c\r \xa0\u1680" + "".join(map(chr, range(0x2000, 0x200b)))
+          + "\u2028\u2029\u202f\u205f\u3000\ufeff")
 # Where the text to draw starts ("Text: ..."): quality tags go in front of it.
-_TEXT = re.compile(r"(?:^|\s|[,.:\[\]{}\u3001\u3002])text:(?!:)", re.IGNORECASE)
+_TEXT = re.compile(r"(?:^|[%s,.:\[\]{}\u3001\u3002])text:(?!:)" % _SPACE, re.IGNORECASE)
 _WEIGHT = re.compile(r":[0-9.]+\Z")  # At the end of a "|" part, on V3.
 _PIPE, _PIPES = "\ue000", "\ue001"  # Stand-ins while splitting.
 
@@ -138,6 +143,123 @@ def remove_quality(model: str, prompt: str, level: str) -> Optional[str]:
         return text[:-len(suffix) - 2] if text.endswith(", " + suffix) else None
 
     return _each_tagged_part(model, prompt, without)
+
+
+# ---- Text to draw (V5) ---------------------------------------------------------
+# V5 draws the text that follows "Text:" in the prompt. The site adds that on
+# its own: what the prompt and the character prompts have in quotes goes at
+# the end of the prompt, after the quality tags, as "teXt: ..." (written so,
+# to tell it apart on import). Not if a prompt has "Text:" already.
+
+_AUTO_TEXT = re.compile(r"(?:^|[%s,.:\[\]{}、。])teXt:(?!:)" % _SPACE)
+_TRAILING = re.compile(r"[%s,]+\Z" % _SPACE)
+# A quote, and what ends it. A ' only starts one after a space, comma or full
+# stop (or at the start), and a ' or ’ doesn't end one before a letter or digit,
+# so that "it's" and "don’t" aren't taken for quotes.
+_QUOTES = {'"': '"', "“": "”", "「": "」", "'": "'", "‘": "’"}
+_APOSTROPHES = ("'", "’")
+# Japanese and Chinese: text mostly in these is collected in the reverse order.
+_CJK = re.compile("[　-〿぀-ゟ゠-ヿ＀-ﾟ"
+                  "一-龯㐀-䶿]")
+
+
+def has_auto_text(model: str) -> bool:
+    """Whether the site adds the quoted text for this model to draw."""
+    return model_key(model) in ("5-full", "5-curated")
+
+
+def _letter_or_digit(unit: int) -> bool:
+    # One UTF-16 unit, as the site's script sees it: half of a pair is neither.
+    return unicodedata.category(chr(unit))[0] in "LN"
+
+
+def _quoted(text: str) -> List[str]:
+    """What ``text`` has in quotes, in order, each trimmed; empty ones left out."""
+    # The site's script counts in UTF-16 units; so does this, to agree on
+    # what comes before and after a quote mark.
+    units = memoryview(text.encode("utf-16-le")).cast("H")
+    found, at = [], 0
+    while at < len(units):
+        mark = chr(units[at])
+        end_mark = _QUOTES.get(mark)
+        if end_mark is None or (mark == "'" and at > 0 and chr(units[at - 1]) not in _SPACE + ",."):
+            at += 1
+            continue
+        end = at + 1
+        while end < len(units) and (chr(units[end]) != end_mark or (
+                end_mark in _APOSTROPHES and end + 1 < len(units)
+                and _letter_or_digit(units[end + 1]))):
+            end += 1
+        if end >= len(units):
+            at += 1
+            continue
+        piece = units[at + 1:end].tobytes().decode("utf-16-le").strip(_SPACE)
+        if piece:
+            found.append(piece)
+        at = end + 1
+    return found
+
+
+def _in_rows(characters):
+    """Characters sorted by height, split into rows where they're far apart."""
+    if len(characters) <= 1:
+        return [characters]
+    cut, widest = 1, -1.0
+    for index in range(1, len(characters)):
+        gap = characters[index][2] - characters[index - 1][2]
+        if gap > widest:
+            cut, widest = index, gap
+    if characters[-1][2] - characters[0][2] <= 0.15 and widest <= 0.1:
+        return [characters]
+    return _in_rows(characters[:cut]) + _in_rows(characters[cut:])
+
+
+def _texts(prompt: str, characters, use_coords: bool) -> List[str]:
+    """The quoted text of the prompt, then of each character: in the order
+    they're listed, or with positions given, row by row from the top."""
+    characters = [c for c in characters if c[0]]
+    if use_coords:
+        rows = _in_rows(sorted(characters, key=lambda c: c[2]))
+        characters = [c for row in rows for c in sorted(row, key=lambda c: c[1])]
+    found = [_quoted(prompt)] + [_quoted(c[0]) for c in characters]
+    joined = "".join(piece for pieces in found for piece in pieces)
+    cjk = len(_CJK.findall(joined))
+    if cjk and cjk / (len(joined.encode("utf-16-le")) // 2) > 0.3:
+        for pieces in found:
+            pieces.reverse()
+    return [piece for pieces in found for piece in pieces]
+
+
+def add_auto_text(prompt: str, characters=(), use_coords: bool = False) -> str:
+    """``prompt`` (quality tags included) with the quoted text added for V5
+    to draw, as the site adds it. ``characters``: (prompt, x, y) of each
+    character that's switched on; ``use_coords``: whether positions are given."""
+    characters = [c for c in characters if c[0]]
+    if _TEXT.search(prompt) or any(_TEXT.search(c[0]) for c in characters):
+        return prompt
+    parts = split_parts(prompt)
+    texts = _texts(parts[0], characters, use_coords)
+    if not texts:
+        return prompt
+    added = "teXt: " + "\n\n".join(texts)
+    first = _TRAILING.sub("", parts[0])
+    parts[0] = first + ", " + added if first else added
+    return "|".join(parts)
+
+
+def remove_auto_text(prompt: str, characters=(), use_coords: bool = False) -> str:
+    """The opposite of add_auto_text: where a recorded prompt has the text the
+    site would have added, it's taken out, as the site does on import."""
+    parts = split_parts(prompt)
+    for index, part in enumerate(parts):
+        found = _AUTO_TEXT.search(part)
+        if found is None:
+            continue
+        before = part[:found.start()]
+        if part[found.end():].strip(_SPACE) == "\n\n".join(
+                _texts(before, characters, use_coords)):
+            parts[index] = _TRAILING.sub("", before)
+    return "|".join(parts)
 
 
 # ---- Undesired Content presets ----------------------------------------------

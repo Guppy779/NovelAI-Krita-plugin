@@ -131,6 +131,8 @@ class ImportDialog(QDialog):
             "On: if the selected model has them, they are taken out of the text and\n"
             "chosen in the Quality tags and Undesired preset boxes instead.\n"
             "Otherwise they stay in the text, so they're still sent.\n"
+            "On V5 the \"teXt: ...\" NovelAI added from quotes is taken out too,\n"
+            "as it's added again.\n"
             "Off: the text is kept as recorded and both boxes are turned off.")
         layout.addSpacing(6)
         layout.addLayout(_indented(self.clean))

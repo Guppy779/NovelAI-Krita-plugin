@@ -340,6 +340,17 @@ def test_no_pictures_are_made_while_a_generation_runs(made):
     assert made == ["fitted", "fitted", "cut", "cut"]
 
 
+def test_no_reference_is_added_while_a_generation_runs(made):
+    editor = editor_for(V5)
+    editor.set_generating(True)
+    assert not editor.add_button.isEnabled()
+    assert not editor.add_image(plain(8, 8))  # A file chosen as it started, say.
+    assert editor._cards == [] and made == []
+    assert editor.said[-1] == "Add the reference once the generation is done."
+    editor.set_generating(False)
+    assert editor.add_button.isEnabled() and editor.add_image(plain(8, 8))
+
+
 def test_a_reference_the_model_cant_take_isnt_made_for_it(made):
     editor = editor_for(V5)
     editor.add_image(plain(8, 8))

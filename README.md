@@ -159,9 +159,9 @@ until you clear them, switch document or change the canvas size, and aren't save
   `nsfw` in the undesired content, unless your prompt contains it.
 - **Text in quotes (V5):** as on the site, what you put in quotes in the prompt or a
   character prompt, such as `a sign that says "HELLO"`, is also added at the end of the
-  request as `teXt: HELLO`, for V5 to draw. Several pieces of text are all added. Nothing is
-  added if a prompt already has `Text:` in it, so write that yourself to say exactly what to
-  draw.
+  prompt as `teXt: HELLO`, after the quality tags, for V5 to draw. Several pieces of text are
+  all added. Nothing is added if a prompt already has `Text:` in it, so write that yourself
+  to say exactly what to draw.
 - **Autocomplete** suggests tags for the word at the cursor, free of charge. Use Up and Down
   to choose, **Tab** or **Enter** to insert, and **Escape** to close the list. Italic
   suggestions are fuzzy matches.
@@ -246,8 +246,9 @@ included, as on the site.
 
 You can keep the same references while switching between V4.5 and V5. Each model is sent
 what it takes: V4.5 skips Outfit references and the outfit tick box, and V5 ignores Fidelity.
-The first time a reference is used with the other kind of model its picture is prepared
-again, which takes a moment.
+After you switch to the other kind of model, each reference's picture is prepared for it a
+moment later, once, which can take a few seconds for large pictures. While a generation runs
+this waits until it's done, and no references can be added.
 
 Things to know:
 
@@ -261,8 +262,8 @@ Things to know:
   shape, and what sticks out is cut off evenly on both sides: a 1024 × 1536 picture loses a
   thin strip at the top and bottom, for example. Nothing is added around it, and transparent
   parts stay transparent. A picture that already has one of the sizes is sent as it is.
-- **What you see is what's sent:** the small picture on a reference shows it as the current
-  model gets it, and its tooltip gives the size. The scaling is pixel for pixel the NovelAI
+- **What you see is what's sent:** once it's prepared, the small picture on a reference
+  shows it as the current model gets it, and its tooltip gives the size. The scaling is pixel for pixel the NovelAI
   site's, so the same picture and seed give the same image as on the site.
 - **Several references:** you can add up to 16 and mix types, such as one character and one
   style. Several character references blend into one character.

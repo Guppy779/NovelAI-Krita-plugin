@@ -304,7 +304,8 @@ class ReferenceCard(QFrame):
     def prepare(self, cut):
         """Make the picture as it's sent: cut for V5, or fitted on black for
         V4.5. Takes about half a second, and several for a large picture or
-        one with transparency."""
+        one with transparency. The first time, the source is also packed as a
+        PNG for the other one, which takes up to a second for a large one."""
         if cut in self._prepared:
             return
         image = self._image if self._image is not None else QImage.fromData(self._packed)
@@ -534,6 +535,9 @@ class ReferenceEditor(QWidget):
         """Add ``image`` (a QImage) as a reference. False if it couldn't be.
         ``file``: see file_as_sent."""
         self._follow()  # It's for the document that is active now.
+        if self._generating:  # A file chosen, or dropped, as one started.
+            self._say("Add the reference once the generation is done.")
+            return False
         if len(self._cards) >= api.MAX_REFERENCES:
             self._say("NovelAI takes at most %d precise references." % api.MAX_REFERENCES)
             return False
@@ -588,11 +592,11 @@ class ReferenceEditor(QWidget):
     # ---- Dropped image files -------------------------------------------------
 
     def dragEnterEvent(self, event):
-        if dropped_image_file(event.mimeData()):
+        if not self._generating and dropped_image_file(event.mimeData()):
             event.acceptProposedAction()
 
     def dragMoveEvent(self, event):
-        if dropped_image_file(event.mimeData()):
+        if not self._generating and dropped_image_file(event.mimeData()):
             event.acceptProposedAction()
 
     def dropEvent(self, event):
@@ -656,9 +660,10 @@ class ReferenceEditor(QWidget):
 
     def set_generating(self, generating):
         """Tell whether a generation is running. Pictures it wasn't sent wait
-        until it's done: making them would hold up its preview, and say so
-        over its progress."""
+        until it's done, and no reference can be added meanwhile: making a
+        picture would hold up its preview, and say so over its progress."""
         self._generating = bool(generating)
+        self.add_button.setEnabled(not self._generating)
         self._prepare_later()
 
     def set_model(self, model):

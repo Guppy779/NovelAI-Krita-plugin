@@ -139,7 +139,7 @@ class NovelAIDocker(DockWidget):
         self.characters.set_custom_positions(settings.get_bool("character_positions"))
         layout.addWidget(self.characters)
 
-        # Precise references (V4.5). They cost Anlas, so the cost note follows
+        # Precise references (V4.5 and V5). They cost Anlas, so the cost note follows
         # them. Each document has its own, but they aren't part of its stored
         # settings: the editor keeps them, and only while the document is open.
         self.references = ReferenceEditor(
@@ -490,8 +490,9 @@ class NovelAIDocker(DockWidget):
     def _update_cost_warning(self, doc):
         """Warn when the next generation would spend Anlas (Opus free limits)."""
         reasons = []
+        mask = self._active_mask(doc) if doc is not None else None
+        self.references.set_inpainting(mask is not None)  # V5 takes none then.
         if doc is not None:
-            mask = self._active_mask(doc)
             if mask is not None:
                 width, height = inpaint.generation_size(mask, max_pixels())
             else:
@@ -828,7 +829,7 @@ class NovelAIDocker(DockWidget):
             uc_preset=self.uc_preset.currentText(),
             characters=people,
             use_coords=custom_positions,
-            references=self.references.for_request(),
+            references=self.references.for_request(inpainting=plan is not None),
             strength=strength,
         )
         # Inpainted results are shown pasted into a small copy of the canvas.

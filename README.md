@@ -26,8 +26,8 @@ or Anlatan.
   applies them.
 - **Character prompts** (V4 and newer): a prompt and undesired content for each character,
   placed where the AI chooses or at positions you pick.
-- **Precise reference** (V4.5): give NovelAI a picture to take a character, a style or both
-  from, with the site's Strength and Fidelity sliders.
+- **Precise reference** (V4.5 and V5): give NovelAI a picture to take a character, a style
+  or an outfit from, with the site's settings for it.
 - **Director tools**: Remove BG, Line Art, Sketch, Colorize and Upscale, for your canvas or
   any picture, in a window of their own.
 - **Import from an image**: drop a NovelAI image on any prompt box to reuse its prompt,
@@ -206,10 +206,9 @@ interactions, for example `source#hug` in one character and `target#hug` in the 
 
 ### Precise reference
 
-A precise reference is a picture for NovelAI to take a character, a style or both from. It
-works like **Precise Reference** on the NovelAI site, and only with **V4.5 Full** and **V4.5
-Curated**. NovelAI doesn't offer it for V5 yet. With another model selected the references
-stay in the panel, greyed out, and aren't sent.
+A precise reference is a picture for NovelAI to take a character, a style or an outfit from.
+It works like **Precise Reference** on the NovelAI site, with the **V4.5** and **V5** models.
+With another model selected the references stay in the panel, greyed out, and aren't sent.
 
 Click **+ Add** next to **Precise Reference** and choose **From file...** or **From canvas**
 (the whole visible canvas), or drop an image file on the section. Each reference has:
@@ -219,26 +218,45 @@ Click **+ Add** next to **Precise Reference** and choose **From file...** or **F
   - **Character & Style** takes the character's looks and the art style.
   - **Character** takes only the character's looks.
   - **Style** takes only the art style.
+  - **Outfit** (V5 only) takes only the clothes.
+- **Prefer same outfit** (V5 only, for Character & Style and for Character): ticked, the
+  character tends to wear what they wear in the picture. Unticked, what they wear is left to
+  the prompt. As on the site, choosing Character & Style ticks it and choosing Character
+  unticks it.
 - **Strength:** how strongly the reference is followed. Lower it if poses and expressions
   copy the reference too closely.
-- **Fidelity:** how exactly the reference is applied. At 1 it is hard to change with the
-  prompt, and lower values give the prompt more say.
+- **Fidelity** (V4.5 only): how exactly the reference is applied. At 1 it is hard to change
+  with the prompt, and lower values give the prompt more say.
 - **✕:** removes the reference.
 
-Both sliders run from 0 to 1. Type in the number box to go beyond that, below 0 included, as
-on the site.
+Strength runs from 0 to 1 on V4.5. On V5 it runs from 0 to 5, with 1 in the middle of the
+slider. Fidelity runs from 0 to 1. Type in the number box to go beyond that, below 0
+included, as on the site.
+
+You can keep the same references while switching between V4.5 and V5. Each model is sent
+what it takes: V4.5 skips Outfit references and the outfit tick box, and V5 ignores Fidelity.
+The first time a reference is used with the other kind of model its picture is prepared
+again, which takes a moment.
 
 Things to know:
 
 - **It always costs Anlas:** 5 per reference for each image, on top of the normal price, on
   Opus too. The **Costs Anlas** note shows the amount.
-- **Size:** NovelAI takes references at 1024 × 1536, 1536 × 1024 or 1472 × 1472. Your picture is
-  scaled to fit the nearest of those, with black around it where it doesn't fill it. The
-  scaling is pixel for pixel the NovelAI site's, so the same picture and seed give the same
-  image as on the site.
+- **Size on V4.5:** it takes references at 1024 × 1536, 1536 × 1024 or 1472 × 1472. Your
+  picture is scaled to fit the nearest of those, with black around it where it doesn't fill
+  it.
+- **Size on V5:** it takes references at about one megapixel, in one of 97 shapes from
+  256 × 4096 through 1024 × 1024 to 4096 × 256. Your picture is scaled to cover the nearest
+  shape, and what sticks out is cut off evenly on both sides: a 1024 × 1536 picture loses a
+  thin strip at the top and bottom, for example. Nothing is added around it, and transparent
+  parts stay transparent. A picture that already has one of the sizes is sent as it is.
+- **What you see is what's sent:** the small picture on a reference shows it as the current
+  model gets it, and its tooltip gives the size. The scaling is pixel for pixel the NovelAI
+  site's, so the same picture and seed give the same image as on the site.
 - **Several references:** you can add up to 16 and mix types, such as one character and one
   style. Several character references blend into one character.
-- **Inpainting:** references are used when you inpaint as well.
+- **Inpainting:** V4.5 uses references when you inpaint as well. V5 doesn't: while there is
+  a mask they are left out and cost nothing, and the panel says so.
 - **One set for each document:** every open document has its own references, and switching
   to another document switches the panel to that document's references.
 - **Not saved:** references last until you remove them, or close the document or Krita.

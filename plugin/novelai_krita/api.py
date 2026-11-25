@@ -210,30 +210,124 @@ def character_position(model: str, x: float, y: float) -> Tuple[float, float]:
 # ---- Precise reference -------------------------------------------------------
 # An image for NovelAI to take a character, a style or both from. What's sent
 # follows the NovelAI site.
+#
+# V4.5 and V5 take them, differently:
+#                      V4.5                       V5
+#   types              the three below            also Outfit, and "Prefer same outfit"
+#   Strength           0 to 1                     0 to 5
+#   Fidelity           yes                        no
+#   when inpainting    sent                       left out
+#   the picture        fitted in one of three     cut to one of 97 sizes; stays
+#                      sizes, on black            transparent where it is
 
 REFERENCE_TYPES = [
     ("character&style", "Character & Style"),
     ("character", "Character"),
     ("style", "Style"),
 ]
+OUTFIT_REFERENCE = "costume"
+OUTFIT_REFERENCE_TYPES = REFERENCE_TYPES + [(OUTFIT_REFERENCE, "Outfit")]
 DEFAULT_REFERENCE_TYPE = "character&style"
-# A reference is sent at one of these sizes, padded with black to fit.
+# What a type is sent as with "Prefer same outfit" ticked, and not (V5).
+_OUTFIT_CHOICE = {
+    "character&style": ("character&style", "character&style_anyoutfit"),
+    "character": ("character_mainoutfit", "character"),
+}
+# V4.5: a reference is sent at one of these sizes, padded with black to fit.
 REFERENCE_SIZES = ((1024, 1536), (1536, 1024), (1472, 1472))
+# V5: at one of these, cut to fit. They hold about a megapixel each, with sides
+# in multiples of 64: 256 x 4096, ..., 1024 x 1024, ..., 4096 x 256.
+_TALL_SIZES = [(1024 * 1024 // height // 64 * 64, height) for height in range(4096, 1023, -64)]
+REFERENCE_CUT_SIZES = tuple(
+    _TALL_SIZES + [(height, width) for width, height in reversed(_TALL_SIZES[:-1])])
 MAX_REFERENCES = 16
 REFERENCE_ANLAS = 5  # Per reference and image, on top of the price, on every plan.
 
 
 def supports_references(model: str) -> bool:
-    """True for the models that take precise references (V4.5 only so far)."""
-    return presets.model_key(model) in ("4-5-full", "4-5-curated")
+    """True for the models that take precise references: V4.5 and V5."""
+    return presets.model_key(model) in ("4-5-full", "4-5-curated", "5-full", "5-curated")
+
+
+def _v5_references(model: str) -> bool:
+    return supports_references(model) and is_v5(model)
+
+
+def reference_outfits(model: str) -> bool:
+    """Whether the model takes outfit references and "Prefer same outfit"."""
+    return _v5_references(model)
+
+
+def reference_fidelity(model: str) -> bool:
+    """Whether the model has the Fidelity slider."""
+    return supports_references(model) and not is_v5(model)
+
+
+def reference_strength_max(model: str) -> float:
+    """Where the Strength slider ends."""
+    return 5.0 if _v5_references(model) else 1.0
+
+
+def reference_cut(model: str) -> bool:
+    """Whether a reference is cut to its size (V5), not padded to it (V4.5)."""
+    return _v5_references(model)
+
+
+def sends_references(model: str, inpainting: bool = False) -> bool:
+    """Whether references go with a request. V5 takes none when inpainting."""
+    return supports_references(model) and not (inpainting and _v5_references(model))
+
+
+def reference_types(model: str):
+    """The types to choose from: (what's sent, the name shown)."""
+    return OUTFIT_REFERENCE_TYPES if reference_outfits(model) else REFERENCE_TYPES
+
+
+def has_outfit_choice(kind: str) -> bool:
+    """Whether "Prefer same outfit" applies to a type."""
+    return kind in _OUTFIT_CHOICE
+
+
+def default_same_outfit(kind: str) -> bool:
+    """How "Prefer same outfit" stands after choosing a type, as on the site."""
+    return kind == DEFAULT_REFERENCE_TYPE
+
+
+def reference_caption(model: str, kind: str, same_outfit: bool = True) -> Optional[str]:
+    """What a reference's type is sent as; None if the model can't take it."""
+    if not reference_outfits(model):
+        return None if kind == OUTFIT_REFERENCE else kind
+    if kind in _OUTFIT_CHOICE:
+        return _OUTFIT_CHOICE[kind][0 if same_outfit else 1]
+    return kind
 
 
 def _round(value: float) -> int:
     return int(math.floor(value + 0.5))  # Halves go up, as the site rounds.
 
 
+def cut_reference_layout(width: int, height: int):
+    """How V5 is sent an image of (width, height) as a reference:
+    ((sent width, sent height), (scaled width, scaled height), (left, top)).
+
+    It's scaled to cover the size nearest its shape, and what's sent is cut
+    out of the middle, from (left, top). Nothing is added around it.
+    """
+    if width <= 0 or height <= 0:
+        raise ValueError("width and height must be positive")
+    shape = math.log(width / float(height))
+    sent = REFERENCE_CUT_SIZES[0]
+    for size in REFERENCE_CUT_SIZES:
+        if abs(shape - math.log(size[0] / float(size[1]))) < abs(
+                shape - math.log(sent[0] / float(sent[1]))):
+            sent = size
+    scale = max(sent[0] / float(width), sent[1] / float(height))
+    scaled = max(_round(width * scale), sent[0]), max(_round(height * scale), sent[1])
+    return sent, scaled, ((scaled[0] - sent[0]) // 2, (scaled[1] - sent[1]) // 2)
+
+
 def reference_layout(width: int, height: int):
-    """How an image of (width, height) is sent as a reference:
+    """How V4.5 is sent an image of (width, height) as a reference:
     ((sent width, sent height), (image width, image height), (left, top)).
 
     It goes at the size nearest its shape, scaled to fit inside and centred.
@@ -254,12 +348,13 @@ def reference_layout(width: int, height: int):
 
 @dataclass
 class Reference:
-    """A precise reference. The numbers are the site's sliders (0 to 1)."""
+    """A precise reference. The numbers are the site's sliders."""
 
-    image: str  # Base64 PNG at one of REFERENCE_SIZES.
+    image: str  # Base64 picture, at one of the model's sizes.
     kind: str = DEFAULT_REFERENCE_TYPE
     strength: float = 1.0
-    fidelity: float = 1.0
+    fidelity: float = 1.0  # V4.5 only.
+    same_outfit: bool = True  # "Prefer same outfit" (V5; see has_outfit_choice).
 
 
 @dataclass
@@ -282,7 +377,7 @@ class GenerationParams:
     # ``use_coords``: place them at their positions, not where the AI chooses.
     characters: List[CharacterPrompt] = field(default_factory=list)
     use_coords: bool = False
-    # Precise references (V4.5): the ones to send.
+    # Precise references (V4.5 and V5): the ones to send.
     references: List[Reference] = field(default_factory=list)
     # Image to image / inpainting. ``image`` and ``mask`` are base64 PNGs of
     # exactly width x height pixels; white in the mask means "regenerate".
@@ -374,19 +469,25 @@ def build_payload(p: GenerationParams) -> dict:
         params.update({"sm": False, "sm_dyn": False})
 
     # The selected model decides, as on the site: V5 Curated inpaints with
-    # V4.5 Curated's model, but takes no references.
-    references = [r for r in p.references if r.image]
-    if references and supports_references(p.model):
+    # V4.5 Curated's model, but as V5 it takes no references then.
+    references = []
+    if sends_references(p.model, action == "infill"):
+        references = [(r, reference_caption(p.model, r.kind, r.same_outfit))
+                      for r in p.references if r.image]
+        references = [(r, caption) for r, caption in references if caption]
+    if references:
+        fidelity = reference_fidelity(p.model)
         params.update({
-            "director_reference_images": [r.image for r in references],
+            "director_reference_images": [r.image for r, _ in references],
             "director_reference_descriptions": [
-                {"caption": {"base_caption": r.kind, "char_captions": []}, "legacy_uc": False}
-                for r in references],
+                {"caption": {"base_caption": caption, "char_captions": []}, "legacy_uc": False}
+                for _, caption in references],
             "director_reference_information_extracted": [1 for _ in references],
-            "director_reference_strength_values": [float(r.strength) for r in references],
-            # The site's Fidelity slider is sent the other way round.
+            "director_reference_strength_values": [float(r.strength) for r, _ in references],
+            # The site's Fidelity slider is sent the other way round. A model
+            # without the slider is sent it as if at 1.
             "director_reference_secondary_strength_values": [
-                round(1.0 - float(r.fidelity), 6) for r in references],
+                round(1.0 - float(r.fidelity), 6) if fidelity else 0.0 for r, _ in references],
         })
 
     if p.sampler == "k_euler_ancestral" and params["noise_schedule"] != "native":

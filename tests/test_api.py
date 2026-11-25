@@ -437,11 +437,60 @@ def test_grid_positions():
 @pytest.mark.parametrize("model, expected", [
     ("nai-diffusion-4-5-full", True), ("nai-diffusion-4-5-curated", True),
     ("nai-diffusion-4-5-full-inpainting", True),
-    ("nai-diffusion-5-full", False), ("nai-diffusion-5-curated", False),
+    ("nai-diffusion-5-full", True), ("nai-diffusion-5-curated", True),
+    ("nai-diffusion-5-full-medium", True),
     ("nai-diffusion-4-full", False), ("nai-diffusion-3", False), ("something-new", False),
 ])
-def test_only_v45_takes_references(model, expected):
+def test_v45_and_v5_take_references(model, expected):
     assert api.supports_references(model) is expected
+
+
+@pytest.mark.parametrize("model", ["nai-diffusion-5-full", "nai-diffusion-5-curated"])
+def test_what_v5_does_with_references(model):
+    assert api.reference_outfits(model) and api.reference_cut(model)
+    assert not api.reference_fidelity(model)
+    assert api.reference_strength_max(model) == 5
+    assert api.sends_references(model) and not api.sends_references(model, inpainting=True)
+    assert [kind for kind, _ in api.reference_types(model)] == [
+        "character&style", "character", "style", "costume"]
+
+
+@pytest.mark.parametrize("model", ["nai-diffusion-4-5-full", "nai-diffusion-4-5-curated"])
+def test_what_v45_does_with_references(model):
+    assert not api.reference_outfits(model) and not api.reference_cut(model)
+    assert api.reference_fidelity(model)
+    assert api.reference_strength_max(model) == 1
+    assert api.sends_references(model) and api.sends_references(model, inpainting=True)
+    assert [kind for kind, _ in api.reference_types(model)] == [
+        "character&style", "character", "style"]
+
+
+def test_models_without_references_have_none_of_it():
+    for model in ("nai-diffusion-4-full", "nai-diffusion-3", "something-new"):
+        assert not api.reference_outfits(model) and not api.reference_cut(model)
+        assert not api.reference_fidelity(model) and not api.sends_references(model)
+
+
+@pytest.mark.parametrize("kind, same_outfit, v5, v45", [
+    ("character&style", True, "character&style", "character&style"),
+    ("character&style", False, "character&style_anyoutfit", "character&style"),
+    ("character", True, "character_mainoutfit", "character"),
+    ("character", False, "character", "character"),
+    ("style", True, "style", "style"),
+    ("style", False, "style", "style"),
+    ("costume", True, "costume", None),  # V4.5 takes no outfit references.
+    ("costume", False, "costume", None),
+])
+def test_reference_types_as_sent(kind, same_outfit, v5, v45):
+    assert api.reference_caption("nai-diffusion-5-full", kind, same_outfit) == v5
+    assert api.reference_caption("nai-diffusion-4-5-full", kind, same_outfit) == v45
+
+
+def test_prefer_same_outfit_follows_the_type_chosen():
+    # On the site, choosing Character & Style leaves it ticked, Character not.
+    assert api.default_same_outfit("character&style") and not api.default_same_outfit("character")
+    assert api.has_outfit_choice("character&style") and api.has_outfit_choice("character")
+    assert not api.has_outfit_choice("style") and not api.has_outfit_choice("costume")
 
 
 @pytest.mark.parametrize("size, sent, fitted, corner", [
@@ -460,6 +509,45 @@ def test_reference_layout_follows_the_site(size, sent, fitted, corner):
 def test_reference_layout_rejects_empty():
     with pytest.raises(ValueError):
         api.reference_layout(0, 10)
+    with pytest.raises(ValueError):
+        api.cut_reference_layout(10, 0)
+
+
+def test_the_sizes_v5_cuts_a_reference_to():
+    sizes = api.REFERENCE_CUT_SIZES
+    assert len(sizes) == 97 and len(set(sizes)) == 97
+    assert sizes[0] == (256, 4096) and sizes[48] == (1024, 1024) and sizes[-1] == (4096, 256)
+    assert sizes[12:14] == ((256, 3328), (320, 3264))
+    assert sizes[52:54] == ((1280, 768), (1344, 768))  # Two widths share a height.
+    assert all(w % 64 == 0 and h % 64 == 0 and w * h <= 1024 * 1024 for w, h in sizes)
+    assert all((h, w) in sizes for w, h in sizes)
+
+
+# From the NovelAI site's own arithmetic, run in Node: (picture size, size
+# sent, size it's scaled to, where the part sent starts in that).
+@pytest.mark.parametrize("size, sent, scaled, corner", [
+    ((832, 1216), (832, 1216), (832, 1216), (0, 0)),  # Already right.
+    ((1024, 1024), (1024, 1024), (1024, 1024), (0, 0)),
+    ((1024, 1536), (832, 1216), (832, 1248), (0, 16)),  # Top and bottom cut off.
+    ((1536, 1024), (1216, 832), (1248, 832), (16, 0)),
+    ((1472, 1472), (1024, 1024), (1024, 1024), (0, 0)),
+    ((3000, 2000), (1216, 832), (1248, 832), (16, 0)),
+    ((1920, 1080), (1344, 768), (1365, 768), (10, 0)),
+    ((500, 500), (1024, 1024), (1024, 1024), (0, 0)),  # Scaled up.
+    ((100, 1000), (320, 3200), (320, 3200), (0, 0)),
+    ((900, 1000), (960, 1088), (979, 1088), (9, 0)),
+    ((4000, 100), (4096, 256), (10240, 256), (3072, 0)),  # Wider than the widest.
+    ((1, 1), (1024, 1024), (1024, 1024), (0, 0)),
+    ((640, 480), (1152, 896), (1195, 896), (21, 0)),
+    ((1000, 1415), (832, 1216), (859, 1216), (13, 0)),
+    ((2480, 3508), (832, 1216), (860, 1216), (14, 0)),
+    ((719, 1280), (768, 1344), (768, 1367), (0, 11)),
+    ((333, 777), (640, 1536), (658, 1536), (9, 0)),
+    ((1280, 768), (1280, 768), (1280, 768), (0, 0)),
+    ((1300, 768), (1280, 768), (1300, 768), (10, 0)),
+])
+def test_cut_reference_layout_follows_the_site(size, sent, scaled, corner):
+    assert api.cut_reference_layout(*size) == (sent, scaled, corner)
 
 
 def reference_params(**changes):
@@ -484,10 +572,44 @@ def test_reference_payload_matches_the_site():
     assert parameters["director_reference_secondary_strength_values"] == [0.05, 0.0]
 
 
-@pytest.mark.parametrize("model", ["nai-diffusion-5-full", "nai-diffusion-5-curated",
-                                   "nai-diffusion-4-full", "nai-diffusion-3"])
+@pytest.mark.parametrize("model", ["nai-diffusion-4-full", "nai-diffusion-3"])
 def test_references_are_left_out_for_other_models(model):
     assert not any("director_reference" in key for key in reference_params(model=model))
+
+
+def captions(parameters):
+    return [d["caption"]["base_caption"] for d in parameters["director_reference_descriptions"]]
+
+
+def test_v5_reference_payload_matches_the_site():
+    parameters = reference_params(model="nai-diffusion-5-full", references=[
+        api.Reference("QUJD", "character", 2.5, 0.3, same_outfit=True),
+        api.Reference("R0hJ", "character&style", 1.0, 1.0, same_outfit=False),
+        api.Reference("SktM", "costume", 0.5),
+        api.Reference("TU5P", "style", -0.2),
+    ])
+    assert parameters["director_reference_images"] == ["QUJD", "R0hJ", "SktM", "TU5P"]
+    assert captions(parameters) == [
+        "character_mainoutfit", "character&style_anyoutfit", "costume", "style"]
+    assert parameters["director_reference_descriptions"][0] == {
+        "caption": {"base_caption": "character_mainoutfit", "char_captions": []},
+        "legacy_uc": False}
+    assert parameters["director_reference_information_extracted"] == [1, 1, 1, 1]
+    assert parameters["director_reference_strength_values"] == [2.5, 1.0, 0.5, -0.2]
+    # V5 has no Fidelity: it's sent as if the slider were at 1.
+    assert parameters["director_reference_secondary_strength_values"] == [0.0, 0.0, 0.0, 0.0]
+
+
+def test_v45_skips_outfit_references_and_the_outfit_choice():
+    parameters = reference_params(references=[
+        api.Reference("QUJD", "costume"),
+        api.Reference("R0hJ", "character&style", same_outfit=False),
+        api.Reference("SktM", "character", same_outfit=True),
+    ])
+    assert parameters["director_reference_images"] == ["R0hJ", "SktM"]
+    assert captions(parameters) == ["character&style", "character"]
+    only_outfits = reference_params(references=[api.Reference("QUJD", "costume")])
+    assert not any("director_reference" in key for key in only_outfits)
 
 
 def test_no_references_sends_nothing_about_them():
@@ -502,11 +624,15 @@ def test_references_go_with_inpainting():
     assert parameters["director_reference_images"] == ["QUJD", "R0hJ"]
 
 
-def test_v5_curated_inpainting_takes_no_references():
-    # It inpaints with V4.5 Curated's model, but the site sends none for it.
-    parameters = reference_params(model="nai-diffusion-5-curated", image="aW1hZ2U=",
-                                  mask="bWFzaw==")
+@pytest.mark.parametrize("model", ["nai-diffusion-5-full", "nai-diffusion-5-curated"])
+def test_v5_inpainting_takes_no_references(model):
+    # V5 Curated inpaints with V4.5 Curated's model, but the site goes by the
+    # model selected, and sends V5 none when inpainting.
+    parameters = reference_params(model=model, image="aW1hZ2U=", mask="bWFzaw==")
     assert not any("director_reference" in key for key in parameters)
+    # Image to image is not inpainting.
+    parameters = reference_params(model=model, image="aW1hZ2U=")
+    assert parameters["director_reference_images"] == ["QUJD", "R0hJ"]
 
 
 def test_references_always_cost_anlas():

@@ -47,18 +47,28 @@ character and describe it with <i>girl</i>, <i>boy</i> or <i>other</i> (no numbe
 </ul>
 <p>Characters are saved with the document. New documents start without them.</p>
 <h4>Precise reference</h4>
-<p>A picture for NovelAI to take a character, a style or both from, as on the NovelAI
-site. <b>V4.5 Full</b> and <b>V4.5 Curated</b> only; with another model the references
+<p>A picture for NovelAI to take a character, a style or an outfit from, as on the
+NovelAI site. <b>V4.5</b> and <b>V5</b> models only; with another model the references
 are greyed out and aren't sent.</p>
 <ul>
   <li><b>+ Add</b> takes a picture <b>From file...</b> or <b>From canvas</b>. You can
       also drop an image file on the section.</li>
-  <li>Choose what's taken from it: <b>Character &amp; Style</b>, <b>Character</b> or
-      <b>Style</b>.</li>
+  <li>Choose what's taken from it: <b>Character &amp; Style</b>, <b>Character</b>,
+      <b>Style</b> or, on V5, <b>Outfit</b>.</li>
+  <li><b>Prefer same outfit</b> (V5, for the two character types): ticked, the character
+      tends to wear what they wear in the picture; unticked, that's left to the
+      prompt.</li>
   <li><b>Strength</b> is how strongly the reference is followed; lower it if poses and
-      expressions copy it too closely. <b>Fidelity</b> is how exactly it is applied;
-      lower values give the prompt more say. Type in the number boxes to go beyond 0
-      to 1, below 0 included.</li>
+      expressions copy it too closely. It runs to 1 on V4.5 and to 5 on V5.
+      <b>Fidelity</b> (V4.5 only) is how exactly it is applied; lower values give the
+      prompt more say. Type in the number boxes to go beyond the sliders, below 0
+      included.</li>
+  <li>V4.5 gets the picture fitted on black at one of three sizes. V5 gets it cut to
+      the nearest of 97 shapes of about a megapixel: what sticks out is cut off at the
+      edges, and transparent parts stay transparent. The small picture shows what's
+      sent.</li>
+  <li>V4.5 uses references when inpainting too. V5 leaves them out while there is a
+      mask.</li>
   <li>Untick a reference to leave it out without deleting it; &#x2715; removes it.</li>
   <li>Each reference costs <b>5 Anlas per image</b> on top of the normal price, on Opus
       too.</li>

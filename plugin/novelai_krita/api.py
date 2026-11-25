@@ -385,7 +385,7 @@ class GenerationParams:
     image: Optional[str] = None
     mask: Optional[str] = None
     strength: float = 0.7
-    noise: float = 0.0
+    noise: float = 0.0  # Image to image only (0 to 0.99, as on the site).
 
     @property
     def action(self) -> str:
@@ -509,10 +509,11 @@ def build_payload(p: GenerationParams) -> dict:
         params.update({
             "image": p.image,
             "mask": p.mask,
-            # The site always sends its image to image value here. Inpainting's
+            # The site always sends its image to image values here, which have
+            # no control when inpainting: these are their defaults. Inpainting's
             # own strength is the one below.
             "strength": 0.7,
-            "noise": float(p.noise),
+            "noise": 0.0,
             "extra_noise_seed": max(0, int(p.seed) - 1),
         })
         if is_v4(model):

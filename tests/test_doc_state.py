@@ -4,7 +4,7 @@ from novelai_krita import doc_state
 
 STATE = {
     "prompt": "1girl, 銀髪, night sky", "negative_prompt": "lowres", "model": "nai-diffusion-5-full",
-    "quality_tags": "light", "uc_preset": "Human Focus", "strength": 70, "steps": 28,
+    "quality_tags": "light", "uc_preset": "Human Focus", "strength": 70, "noise": 15, "steps": 28,
     "scale": 5.5, "cfg_rescale": 0.0, "sampler": "k_euler_ancestral",
     "noise_schedule": "karras", "seed": "1234", "random_seed": False, "n_samples": 1,
 }

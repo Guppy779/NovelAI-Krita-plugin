@@ -121,6 +121,18 @@ def test_img2img_payload():
     assert params["image"] == "AAAA"
     assert params["strength"] == 0.5
     assert params["extra_noise_seed"] == 6
+    assert params["noise"] == 0.0  # The site's default.
+
+
+def test_noise_goes_with_image_to_image_only():
+    def sent(**options):
+        return api.build_payload(api.GenerationParams(prompt="cat", noise=0.35, **options))
+
+    assert sent(image="AAAA", strength=0.5)["parameters"]["noise"] == 0.35
+    # Inpainting has no Noise on the site: its default goes, as with strength.
+    infill = sent(image="AAAA", mask="BBBB", strength=0.5)["parameters"]
+    assert (infill["noise"], infill["strength"]) == (0.0, 0.7)
+    assert "noise" not in sent()["parameters"]  # Nor when generating anew.
 
 
 def test_v3_gets_the_brownian_settings_too():

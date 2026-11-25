@@ -21,6 +21,7 @@ FIELDS = {
     "quality_tags": str,
     "uc_preset": str,
     "strength": int,
+    "noise": int,
     "steps": int,
     "scale": float,
     "cfg_rescale": float,

@@ -84,7 +84,7 @@ tick **NovelAI Image Generation**, and restart Krita again.
 ### Settings per document
 
 Each document keeps its own prompt, undesired content, characters and generation settings
-(model, presets, strength, steps, sampler, seed and so on). Switching to another document switches
+(model, presets, strength, noise, steps, sampler, seed and so on). Switching to another document switches
 the panel to that document's settings.
 
 - They're saved inside the `.kra` file, so reopening it brings them back. Saving as PNG or
@@ -109,6 +109,12 @@ inpainting mask. The line under the slider always says which mode is active.
 | set | below 100% | The masked area is regenerated at that strength, so more of the original survives (V4 and newer) |
 
 Lower strength keeps more of what's already there.
+
+With image to image, a **Noise** slider shows under Strength, as on the NovelAI site. It adds
+new noise to the canvas before it's refined, which helps NovelAI add new detail or fill empty
+parts, such as a missing background. It starts at 0%, the site's default, which adds none.
+A lot of noise, generation after generation, starts to show artifacts. Inpainting has no
+Noise, as on the site.
 
 When the canvas is sent, it goes the way the NovelAI site sends a picture you upload, pixel
 for pixel. Image to image with the same picture, settings and seed gives the same image as

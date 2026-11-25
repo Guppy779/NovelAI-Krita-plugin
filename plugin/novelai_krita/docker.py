@@ -24,6 +24,10 @@ from .qt import (
 )
 
 MASK_THUMBNAIL_SIZE = 64
+NOISE_TIP = ("Image to image: how much new noise is added to the canvas before it's\n"
+             "refined. More helps NovelAI add new detail, or fill empty parts such as\n"
+             "a missing background. A lot, over and over, starts to show artifacts.\n"
+             "At 0, as on the NovelAI site, none is added.")
 
 
 @dataclass
@@ -178,11 +182,34 @@ class NovelAIDocker(DockWidget):
         self.strength_label = QLabel()
         self.strength_label.setMinimumWidth(36)
         self.strength.valueChanged.connect(self._update_mode)
+        strength_name, noise_name = QLabel("Strength"), QLabel("Noise")
         row = QHBoxLayout()
-        row.addWidget(QLabel("Strength"))
+        row.addWidget(strength_name)
         row.addWidget(self.strength, 1)
         row.addWidget(self.strength_label)
         layout.addLayout(row)
+        # Noise, for image to image only, as on the site: shown below 100%
+        # strength without a mask.
+        self.noise = QSlider(Qt.Orientation.Horizontal)
+        self.noise.setRange(0, 99)
+        self.noise.setValue(settings.get_int("noise"))
+        self.noise.setToolTip(NOISE_TIP)
+        self.noise_label = QLabel()
+        self.noise_label.setMinimumWidth(36)
+        self.noise.valueChanged.connect(self._show_noise)
+        self._show_noise()
+        noise_name.setToolTip(NOISE_TIP)
+        width = max(label.sizeHint().width() for label in (strength_name, noise_name))
+        for label in (strength_name, noise_name):
+            label.setMinimumWidth(width)
+        self.noise_row = QWidget()
+        row = QHBoxLayout(self.noise_row)
+        row.setContentsMargins(0, 0, 0, 0)
+        row.addWidget(noise_name)
+        row.addWidget(self.noise, 1)
+        row.addWidget(self.noise_label)
+        self.noise_row.setVisible(False)  # Until _update_mode knows it's image to image.
+        layout.addWidget(self.noise_row)
         self.inpaint_button = QPushButton("Inpaint...")
         self.inpaint_button.setToolTip(
             "Paint which part of the image to regenerate. A selection is used as\n"
@@ -343,7 +370,7 @@ class NovelAIDocker(DockWidget):
                 self.prompt.textChanged, self.negative.textChanged,
                 self.model.currentIndexChanged, self.model.editTextChanged,
                 self.quality.activated, self.uc_preset.activated,
-                self.strength.valueChanged, self.steps.valueChanged,
+                self.strength.valueChanged, self.noise.valueChanged, self.steps.valueChanged,
                 self.scale.valueChanged, self.rescale.valueChanged,
                 self.sampler.currentIndexChanged, self.schedule.currentIndexChanged,
                 self.seed.textChanged, self.random_seed.toggled,
@@ -456,6 +483,9 @@ class NovelAIDocker(DockWidget):
         self.advanced_toggle.setArrowType(
             Qt.ArrowType.DownArrow if on else Qt.ArrowType.RightArrow)
 
+    def _show_noise(self, *_):
+        self.noise_label.setText("%d%%" % self.noise.value())
+
     def _update_mode(self):
         self._follow_document()
         value = self.strength.value()
@@ -463,6 +493,9 @@ class NovelAIDocker(DockWidget):
         if not self.isVisible():
             return
         doc = canvas.active_document()
+        # Noise goes with image to image only: not when generating anew or inpainting.
+        self.noise_row.setVisible(
+            doc is not None and value < 100 and self._active_mask(doc) is None)
         if doc is None:
             text = "Open a document to generate."
         elif self._active_mask(doc) is not None:
@@ -532,6 +565,7 @@ class NovelAIDocker(DockWidget):
             "quality_tags": self._quality_choice,
             "uc_preset": self._uc_choice,
             "strength": self.strength.value(),
+            "noise": self.noise.value(),
             "steps": self.steps.value(),
             "scale": self.scale.value(),
             "cfg_rescale": self.rescale.value(),
@@ -555,6 +589,7 @@ class NovelAIDocker(DockWidget):
             "quality_tags": settings.get("quality_tags"),
             "uc_preset": settings.get("uc_preset"),
             "strength": settings.get_int("strength"),
+            "noise": settings.get_int("noise"),
             "steps": settings.get_int("steps"),
             "scale": settings.get_float("scale"),
             "cfg_rescale": settings.get_float("cfg_rescale"),
@@ -580,6 +615,7 @@ class NovelAIDocker(DockWidget):
             self._set_model(values["model"])
             self._refresh_presets()
             self.strength.setValue(values["strength"])
+            self.noise.setValue(values["noise"])
             self.steps.setValue(values["steps"])
             self.scale.setValue(values["scale"])
             self.rescale.setValue(values["cfg_rescale"])
@@ -832,6 +868,7 @@ class NovelAIDocker(DockWidget):
             use_coords=custom_positions,
             references=self.references.for_request(inpainting=plan is not None),
             strength=strength,
+            noise=self.noise.value() / 100.0,  # Sent with image to image only.
         )
         # Inpainted results are shown pasted into a small copy of the canvas.
         composer = None

@@ -14,6 +14,7 @@ DEFAULTS = {
     "token": "",
     "model": api.DEFAULT_MODEL,
     "strength": "100",
+    "noise": "0",
     "steps": "28",
     "scale": "5.0",
     "cfg_rescale": "0.0",

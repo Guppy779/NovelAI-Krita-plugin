@@ -10,7 +10,9 @@ or Krita is closed. Each is kept as the picture that is sent, which V4.5 and
 V5 want differently: fitted on black at one of three sizes, or cut to one of
 many. It's made the first time a model of that family needs it, scaled with
 the site's own arithmetic (see scaling.py): NovelAI draws a visibly different
-image from a reference that is a shade off.
+image from a reference that is a shade off. Until it has been made both ways,
+the picture it's made from is kept too, packed as a PNG: unpacked, a large one
+takes tens of megabytes.
 """
 
 import base64
@@ -142,7 +144,7 @@ def prepare_cut(image, file=None):
     size, (to_width, to_height), (left, top) = api.cut_reference_layout(width, height)
     if size == (width, height):
         if file is not None and not cleaned:
-            return base64.b64encode(file).decode("ascii"), size, image.copy()
+            return base64.b64encode(file).decode("ascii"), size, image
     else:
         data = scaling.resize(data, width, height, to_width, to_height)
         row = size[0] * 4
@@ -235,9 +237,12 @@ class ReferenceCard(QFrame):
         super().__init__()
         self.setFrameShape(QFrame.Shape.StyledPanel)
         # The picture as sent, for each of the two ways it is: False for
-        # fitted on black (V4.5), True for cut (V5). (base64, size, to show).
+        # fitted on black (V4.5), True for cut (V5). (base64, size, thumbnail).
         self._prepared = {}
-        self._image, self._file = image, file  # Until it's been made both ways.
+        # What they're made from: the picture until the first is made, then
+        # the same packed as a PNG until the other is made too.
+        self._image, self._packed = image, None
+        self._file = file  # Until it's been made for V5.
         self._model = ""
         self._shown = None  # Which of the two the thumbnail shows.
         changed = self._changed = editor.changed
@@ -302,12 +307,19 @@ class ReferenceCard(QFrame):
         one with transparency."""
         if cut in self._prepared:
             return
-        if cut:
-            self._prepared[cut] = prepare_cut(self._image, self._file)
-        else:
-            self._prepared[cut] = prepare(self._image)
+        image = self._image if self._image is not None else QImage.fromData(self._packed)
+        sent, size, picture = prepare_cut(image, self._file) if cut else prepare(image)
+        thumbnail = QPixmap.fromImage(picture.scaled(
+            THUMBNAIL_SIZE, THUMBNAIL_SIZE, Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.SmoothTransformation))
+        self._prepared[cut] = sent, size, thumbnail
         if len(self._prepared) == 2:  # It's not needed again: let go of it.
-            self._image = self._file = None
+            self._packed = None
+        elif self._packed is None:
+            self._packed = canvas.to_png(image.convertToFormat(_RGBA))  # As _pixels reads it.
+        self._image = None
+        if cut:
+            self._file = None
         self._show_picture()
 
     def _show_picture(self):
@@ -315,11 +327,9 @@ class ReferenceCard(QFrame):
         cut = api.reference_cut(self._model)
         if cut == self._shown or cut not in self._prepared:
             return
-        _, size, picture = self._prepared[cut]
+        _, size, thumbnail = self._prepared[cut]
         self._shown = cut
-        self.thumbnail.setPixmap(QPixmap.fromImage(picture.scaled(
-            THUMBNAIL_SIZE, THUMBNAIL_SIZE, Qt.AspectRatioMode.KeepAspectRatio,
-            Qt.TransformationMode.SmoothTransformation)))
+        self.thumbnail.setPixmap(thumbnail)
         if cut:
             tip = ("Sent at %d x %d. Where the picture hasn't that shape, its edges are\n"
                    "cut off; this is what's left.")

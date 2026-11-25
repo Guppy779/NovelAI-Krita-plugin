@@ -241,13 +241,44 @@ def test_the_picture_is_made_again_for_the_other_kind_of_model(made):
     card = editor._cards[0]
     editor.set_model(V5)
     assert made == ["fitted"]  # Not until it's needed, or a moment has passed.
+    assert card._packed  # What the other one is made from.
     assert editor.for_request()[0].image == "Y3V0" and made == ["fitted", "cut"]
-    assert card._image is None  # Made both ways: the picture it's from is let go.
+    assert card._packed is None  # Made both ways: the picture it's from is let go.
     editor.set_model(V45)
     assert editor.for_request()[0].image == "Zml0dGVk"
     editor.set_model(V5)
     editor.prepare_pictures()
     assert made == ["fitted", "cut"]  # Each only once.
+
+
+def test_a_card_keeps_its_picture_packed_and_makes_the_same_from_it():
+    image = striped(24, 16)
+    image.setPixelColor(3, 4, QColor(90, 80, 70, 60))
+    image.setPixelColor(5, 6, QColor(90, 80, 70, 0))  # Colour under a clear pixel counts too.
+    file = b"\x89PNG the file"
+    editor = editor_for(V45)
+    editor.add_image(image, file)
+    card = editor._cards[0]
+    assert card._image is None  # Not the picture itself, which is far larger.
+    assert rgba(QImage.fromData(card._packed)) == rgba(image)
+    assert card._file == file  # V5 may still want it.
+    assert card.thumbnail.pixmap().width() == references.THUMBNAIL_SIZE
+    editor.set_model(V5)
+    assert editor.for_request()[0].image == references.prepare_cut(image)[0]
+    assert card._packed is None and card._file is None
+    assert "1216 x 832" in card.thumbnail.toolTip()
+    editor.set_model(V45)
+    assert editor.for_request()[0].image == references.prepare(image)[0]
+    assert "1536 x 1024" in card.thumbnail.toolTip()
+
+
+def test_a_file_v5_takes_as_it_is_reaches_the_request(tmp_path):
+    path = tmp_path / "right.png"
+    plain(1024, 1024).save(str(path))
+    editor = editor_for(V5)
+    editor.add_file(str(path))
+    assert base64.b64decode(editor.for_request()[0].image) == path.read_bytes()
+    assert editor.said[-1] == "Added right.png as a precise reference."
 
 
 def test_a_moment_after_the_model_changes_the_pictures_are_made(made):

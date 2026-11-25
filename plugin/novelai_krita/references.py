@@ -34,7 +34,7 @@ AMOUNT_MIN, AMOUNT_MAX = -10.0, 10.0
 # A slider that ends beyond 1 has 1 in its middle, as on the site: this many
 # places up to 1, and as many from there to its end.
 HALF_SLIDER = 100
-PREPARE_DELAY = 400  # Milliseconds after a change of model, in case more follow.
+PREPARE_DELAY = 400  # Milliseconds after a change that needs pictures made, in case more follow.
 _RGB = QImage.Format.Format_RGB32
 _RGBA = QImage.Format.Format_RGBA8888
 
@@ -619,19 +619,34 @@ class ReferenceEditor(QWidget):
         """The references to send (api.Reference), none if the model takes
         none. ``inpainting``: whether the request inpaints, if that isn't as
         set_inpainting was last told."""
-        self.prepare_pictures(inpainting)
-        return [card.request() for card in self._sent(inpainting)]
+        sent = self._sent(inpainting)
+        self._prepare(sent)
+        return [card.request() for card in sent]
 
-    def prepare_pictures(self, inpainting=None):
-        """Make the pictures the current model will be sent, where a model of
-        its kind hasn't been sent them before."""
-        self._prepare_timer.stop()
+    def _unmade(self, cards):
+        """Those of ``cards`` whose picture a model of the current one's kind
+        hasn't been sent before, so that it has yet to be made."""
         cut = api.reference_cut(self._model)
-        waiting = [card for card in self._sent(inpainting) if not card.is_prepared(cut)]
+        return [card for card in cards if not card.is_prepared(cut)]
+
+    def _prepare(self, cards):
+        waiting = self._unmade(cards)
         if waiting:
+            cut = api.reference_cut(self._model)
             self._busy("Preparing the references for this model...",
                        lambda: [card.prepare(cut) for card in waiting])
             self._say("The references are ready for this model.")
+
+    def _taken(self):
+        """The references the current model takes: those it's sent, and those
+        it would be if they were ticked and there were no mask."""
+        return [card for card in self._cards if card.is_taken()]
+
+    def prepare_pictures(self):
+        """Make the pictures for the current model that aren't made yet: of
+        every reference it takes, so that each shows what the model gets."""
+        self._prepare_timer.stop()
+        self._prepare(self._taken())
 
     def set_model(self, model):
         if model != self._model:
@@ -664,5 +679,5 @@ class ReferenceEditor(QWidget):
             notes.append("That's as many references as NovelAI takes (%d)." % api.MAX_REFERENCES)
         self.note.setText("\n".join(notes))
         self.note.setVisible(bool(notes))
-        if self._sent():
-            self._prepare_timer.start()  # In a moment, where they aren't made yet.
+        if self._unmade(self._taken()):
+            self._prepare_timer.start()  # They're made in a moment.

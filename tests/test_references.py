@@ -285,13 +285,50 @@ def test_a_moment_after_the_model_changes_the_pictures_are_made(made):
     editor = editor_for(V45)
     editor.add_image(plain(8, 8))
     editor.add_image(plain(8, 8))
+    assert not editor._prepare_timer.isActive()  # Nothing to make.
     editor._cards[1].enabled.setChecked(False)
     editor.set_model(V5)
     assert editor._prepare_timer.isActive()
     editor.prepare_pictures()  # What the timer does.
-    assert made == ["fitted", "fitted", "cut"]  # Not the one that's switched off.
     assert editor.said[-1] == "The references are ready for this model."
     assert not editor._prepare_timer.isActive()
+    # The one that's switched off too: it shows what V5 would get as well.
+    assert made == ["fitted", "fitted", "cut", "cut"]
+    assert all("832 x 1216" in card.thumbnail.toolTip() for card in editor._cards)
+    editor.set_model(V45)
+    assert all("1024 x 1536" in card.thumbnail.toolTip() for card in editor._cards)
+    assert not editor._prepare_timer.isActive()  # Made before.
+
+
+def test_only_what_is_sent_is_made_for_a_request(made):
+    editor = editor_for(V45)
+    editor.add_image(plain(8, 8))
+    editor.add_image(plain(8, 8))
+    editor._cards[1].enabled.setChecked(False)
+    editor.set_model(V5)
+    assert len(editor.for_request()) == 1 and made == ["fitted", "fitted", "cut"]
+    assert editor._prepare_timer.isActive()  # The other follows.
+
+
+def test_the_pictures_are_made_for_v5_under_a_mask_too(made):
+    editor = editor_for(V45)
+    editor.add_image(plain(8, 8))
+    editor.set_inpainting(True)
+    editor.set_model(V5)
+    assert editor.used() == 0 and editor._prepare_timer.isActive()
+    editor.prepare_pictures()
+    assert made == ["fitted", "cut"] and "832 x 1216" in editor._cards[0].thumbnail.toolTip()
+
+
+def test_a_reference_the_model_cant_take_isnt_made_for_it(made):
+    editor = editor_for(V5)
+    editor.add_image(plain(8, 8))
+    choose(editor._cards[0], "costume")
+    editor.set_model(V45)
+    editor.prepare_pictures()
+    editor.set_model(V4)
+    editor.prepare_pictures()
+    assert made == ["cut"] and not editor._prepare_timer.isActive()
 
 
 def test_v5_takes_no_references_when_inpainting(made):
